@@ -1,0 +1,46 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": [
+      "DOM",
+      "DOM.Iterable",
+      "ES2022"
+    ],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "paths": {
+      "@local-vn/backend-client": [
+        "./packages/backend-client/src/index.ts"
+      ],
+      "@local-vn/config": [
+        "./packages/config/src/index.ts"
+      ],
+      "@local-vn/shared-types": [
+        "./packages/shared-types/src/index.ts"
+      ],
+      "@local-vn/story-tree": [
+        "./packages/story-tree/src/index.ts"
+      ],
+      "@local-vn/story-mechanism": [
+        "./packages/story-mechanism/src/index.ts"
+      ],
+      "@local-vn/stores": [
+        "./packages/stores/src/index.ts"
+      ],
+      "@local-vn/vn-ui": [
+        "./packages/vn-ui/src/index.ts"
+      ]
+    }
+  }
+}

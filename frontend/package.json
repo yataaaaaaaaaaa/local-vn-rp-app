@@ -1,0 +1,35 @@
+{
+  "name": "local-vn-rp-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json && vite build && tsc -p tsconfig.electron.json",
+    "electron:start": "npm run build && electron dist-electron/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.electron.json --noEmit",
+    "test": "vitest run",
+    "product-test:frontend": "node scripts/product-test-frontend.mjs"
+  },
+  "dependencies": {
+    "@replayable-text-tree/core": "file:D:/Anything/libs/replayable-text-tree",
+    "@vitejs/plugin-react": "latest",
+    "danbooru-tag-resolver": "file:D:/Anything/libs/danbooru-tag-resolver",
+    "electron": "latest",
+    "vite": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "typescript": "latest",
+    "zustand": "latest"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "latest",
+    "@testing-library/react": "latest",
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "jsdom": "latest",
+    "vitest": "latest"
+  }
+}

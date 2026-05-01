@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["vite/client", "vitest/globals"]
+  },
+  "include": ["src", "packages", "tests", "vite.config.ts"],
+  "exclude": ["electron", "dist", "dist-electron", "node_modules"]
+}

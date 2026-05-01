@@ -1,0 +1,111 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Build / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+pip-wheel-metadata/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Virtual environments
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# PEP 582
+__pypackages__/
+
+# Dependency / package managers
+pip-log.txt
+pip-delete-this-directory.txt
+poetry.lock
+# Uncomment if you do NOT want to commit locks for apps:
+# uv.lock
+# pdm.lock
+
+# Tests / coverage
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Type checkers / linters
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Docs
+/site/
+
+# Local config / secrets
+*.local
+*.secret
+secrets.*
+.pypirc
+.streamlit/secrets.toml
+
+# Celery / queues / local services
+celerybeat-schedule*
+celerybeat.pid
+*.pid
+*.rdb
+*.aof
+mnesia/
+rabbitmq/
+rabbitmq-data/
+activemq-data/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE/editor local files
+.idea/
+.vscode/
+*.swp
+*.swo
