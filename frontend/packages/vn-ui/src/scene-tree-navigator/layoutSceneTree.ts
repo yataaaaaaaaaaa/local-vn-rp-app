@@ -1,8 +1,12 @@
-import ELK, { type ElkNode } from "elkjs/lib/elk.bundled.js";
+import ELK, { type ElkNode } from "elkjs/lib/elk-api.js";
+import elkWorkerUrl from "elkjs/lib/elk-worker.min.js?url";
 import { Position, type Edge } from "@xyflow/react";
 import type { SceneTreeReactNode } from "./types";
 
-const elk = new ELK();
+const elk = new ELK({
+  algorithms: ["layered"],
+  workerUrl: elkWorkerUrl,
+});
 
 const NODE_WIDTH = 190;
 const NODE_HEIGHT = 58;

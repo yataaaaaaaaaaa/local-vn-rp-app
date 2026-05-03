@@ -25,7 +25,41 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
-    sourcemap: true
+    sourcemap: true,
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            {
+              name: "vendor-react",
+              test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/,
+              priority: 40,
+            },
+            {
+              name: "vendor-flow",
+              test: /node_modules[\\/](@xyflow|d3-|d3)[\\/]/,
+              priority: 30,
+            },
+            {
+              name: "vendor-resolver",
+              test: /node_modules[\\/]danbooru-tag-resolver[\\/]/,
+              priority: 30,
+            },
+            {
+              name: "vendor-state",
+              test: /node_modules[\\/]zustand[\\/]/,
+              priority: 20,
+            },
+            {
+              name: "vendor",
+              test: /node_modules[\\/]/,
+              priority: 10,
+              maxSize: 420 * 1024,
+            },
+          ],
+        },
+      },
+    },
   },
   test: {
     environment: "jsdom",
