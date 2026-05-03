@@ -1,15 +1,10 @@
 import type { BackendRuntimeConfig } from "@local-vn/shared-types";
-import { outputImageFile } from "@local-vn/config";
 import {
-  parseImageRef,
   resolveStoryNodeFields,
-  storyWorkflowStepIds,
   type StoryNodeFieldKey,
   type StoryWorkflowStepId
 } from "@local-vn/story-domain";
-import { nextStepId } from "@local-vn/workflow-core";
 
-import type { StorySessionServices } from "../ports";
 import { applyPresetContext as applyPresetContextUseCase } from "../usecases/applyPresetContext";
 import { applyResolverResult as applyResolverResultUseCase } from "../usecases/applyResolverResult";
 import {
@@ -20,15 +15,8 @@ import {
   duplicateCurrentBranch as duplicateCurrentBranchUseCase,
   submitUserText as submitUserTextUseCase
 } from "../usecases/branchCommands";
-import { commitStep } from "../usecases/commitStep";
-import {
-  cancelAllWorkflowRuns,
-  cancelNodeWorkflowRuns,
-  continueWorkflow,
-  type WorkflowRunRegistry
-} from "../usecases/continueWorkflow";
 import { editStepField as editStepFieldUseCase } from "../usecases/editStepField";
-import { generateStepCandidate } from "../usecases/generateStepCandidate";
+import { SceneWorkflowCoordinator } from "../workflow/sceneWorkflowCoordinator";
 import {
   createStory as createStoryUseCase,
   loadStory as loadStoryUseCase,
@@ -57,10 +45,19 @@ import {
 export class StorySessionController {
   private state: StorySessionState;
   private readonly listeners = new Set<StorySessionListener>();
-  private activeRuns: WorkflowRunRegistry = {};
+  private readonly workflowCoordinator: SceneWorkflowCoordinator;
 
   public constructor(private readonly options: StorySessionControllerOptions) {
     this.state = createInitialStorySessionState(options.initialState);
+    this.workflowCoordinator = new SceneWorkflowCoordinator(
+      {
+        getState: () => this.getState(),
+        setState: (patch) => this.setState(patch),
+        saveStory: () => this.saveStory(),
+        handleError: (error) => this.handleError(error)
+      },
+      options.services
+    );
   }
 
   public getState(): StorySessionState {
@@ -84,6 +81,8 @@ export class StorySessionController {
   }
 
   public async createStory(title: string): Promise<void> {
+    let selectedNodeId: string | null = null;
+
     await this.runBusy(async () => {
       const result = await createStoryUseCase({
         title,
@@ -94,10 +93,15 @@ export class StorySessionController {
         ...result.state,
         backendConfig: this.state.backendConfig
       };
+      selectedNodeId = this.state.selectedNodeId;
     });
+
+    await this.workflowCoordinator.resumeScene(selectedNodeId);
   }
 
   public async loadStory(storyId: string): Promise<void> {
+    let selectedNodeId: string | null = null;
+
     await this.runBusy(async () => {
       const result = await loadStoryUseCase({
         storyId,
@@ -107,8 +111,11 @@ export class StorySessionController {
 
       if (result.state) {
         this.state = result.state;
+        selectedNodeId = result.state.selectedNodeId;
       }
     });
+
+    await this.workflowCoordinator.resumeScene(selectedNodeId);
   }
 
   public async saveStory(): Promise<void> {
@@ -205,17 +212,7 @@ export class StorySessionController {
   }
 
   public selectWorkflowStep(stepId: StoryWorkflowStepId): void {
-    if (!this.state.selectedNodeId) {
-      return;
-    }
-
-    this.setState({
-      activeStepId: stepId,
-      message: null,
-      dirty: true
-    });
-
-    void this.saveStory();
+    this.workflowCoordinator.selectStep(stepId);
   }
 
   public editStepField(
@@ -253,156 +250,37 @@ export class StorySessionController {
   public async validateStep(
     stepId: StoryWorkflowStepId = this.state.activeStepId
   ): Promise<void> {
-    if (!this.state.tree || !this.state.selectedNodeId) {
-      return;
-    }
-
-    try {
-      const nodeId = this.state.selectedNodeId;
-      const result = commitStep({
-        tree: this.state.tree,
-        workflowByNodeId: this.state.workflowByNodeId,
-        nodeId,
-        fields: resolveStoryNodeFields(this.state.tree, nodeId),
-        stepId
-      });
-
-      const imageRef =
-        typeof result.payload.imageRef === "string"
-          ? parseImageRef(result.payload.imageRef)
-          : null;
-
-      this.setState({
-        tree: result.tree,
-        workflowByNodeId: result.workflowByNodeId,
-        imageRefs: imageRef
-          ? {
-              ...this.state.imageRefs,
-              [nodeId]: imageRef
-            }
-          : this.state.imageRefs,
-        activeStepId: stepId,
-        dirty: true,
-        message: "Step validated."
-      });
-
-      await this.saveStory();
-
-      const next = nextStepId(storyWorkflowStepIds, stepId);
-
-      if (next) {
-        await this.continueFrom(next, nodeId);
-      }
-    } catch (error) {
-      this.handleError(error);
-    }
+    await this.workflowCoordinator.validateStep({
+      stepId,
+      reason: "manual"
+    });
   }
 
   public async regenerateStep(
     stepId: StoryWorkflowStepId = this.state.activeStepId
   ): Promise<void> {
-    if (!this.state.tree || !this.state.selectedNodeId || !this.state.backendConfig) {
-      return;
-    }
-
-    const nodeId = this.state.selectedNodeId;
-
-    try {
-      this.setState({
-        busy: true,
-        activeStepId: stepId,
-        runningJob: {
-          id: `${nodeId}:${stepId}:${Date.now()}`,
-          nodeId,
-          runId: `${nodeId}:manual:${Date.now()}`,
-          stepId
-        },
-        message: "Generating..."
-      });
-
-      const result = await generateStepCandidate({
-        workflowByNodeId: this.state.workflowByNodeId,
-        nodeId,
-        fields: resolveStoryNodeFields(this.state.tree, nodeId),
-        stepId,
-        context: this.createWorkflowContext(nodeId, stepId)
-      });
-
-      this.setState({
-        workflowByNodeId: result.workflowByNodeId,
-        busy: false,
-        runningJob: null,
-        activeStepId: stepId,
-        dirty: true,
-        message: result.error ?? result.warnings?.join("; ") ?? "Step generated."
-      });
-
-      await this.saveStory();
-
-      if (
-        !result.error &&
-        this.state.autoValidateGeneratedCandidateByStepId[stepId]
-      ) {
-        await this.validateStep(stepId);
-      }
-    } catch (error) {
-      this.setState({
-        busy: false,
-        runningJob: null
-      });
-      this.handleError(error);
-    }
+    await this.workflowCoordinator.startGeneration({
+      stepId,
+      reason: "manual"
+    });
   }
 
   public async continueFrom(
     stepId: StoryWorkflowStepId = this.state.activeStepId,
     nodeId: string | null = this.state.selectedNodeId
   ): Promise<void> {
-    if (!this.state.tree || !nodeId || !this.state.backendConfig) {
-      return;
-    }
+    await this.workflowCoordinator.startGeneration({
+      nodeId,
+      stepId,
+      reason: "compat"
+    });
+  }
 
-    try {
-      this.setState({
-        busy: true,
-        activeStepId: stepId,
-        message: "Running workflow..."
-      });
-
-      const result = await continueWorkflow({
-        tree: this.state.tree,
-        workflowByNodeId: this.state.workflowByNodeId,
-        nodeId,
-        startStepId: stepId,
-        context: this.createWorkflowContext(nodeId, stepId),
-        activeRuns: this.activeRuns,
-        autoValidateByStepId: this.state.autoValidateGeneratedCandidateByStepId
-      });
-
-      this.activeRuns = result.activeRuns;
-
-      this.setState({
-        tree: result.tree,
-        workflowByNodeId: result.workflowByNodeId,
-        activeStepId: result.stoppedAtStepId,
-        busy: false,
-        runningJob: null,
-        dirty: true,
-        message: result.error
-          ? result.error
-          : result.cancelled
-            ? "Workflow cancelled."
-            : "Workflow updated."
-      });
-
-      await this.saveStory();
-    } catch (error) {
-      this.setState({
-        busy: false,
-        runningJob: null
-      });
-      this.handleError(error);
-    }
+  public setStepAutoValidate(
+    stepId: StoryWorkflowStepId,
+    enabled: boolean
+  ): void {
+    this.workflowCoordinator.setStepAutoValidate(stepId, enabled);
   }
 
   public async applyPresetContext(context: string): Promise<void> {
@@ -471,52 +349,29 @@ export class StorySessionController {
   }
 
   public cancelAll(): void {
-    this.activeRuns = cancelAllWorkflowRuns(this.activeRuns);
-    this.setState({
-      busy: false,
-      runningJob: null,
-      message: "Workflow cancelled."
-    });
+    this.workflowCoordinator.cancelAll();
   }
 
   public cancelNode(nodeId: string): void {
-    this.activeRuns = cancelNodeWorkflowRuns(this.activeRuns, nodeId);
-    this.setState({
-      busy: false,
-      runningJob: null,
-      message: "Workflow cancelled."
-    });
+    this.workflowCoordinator.cancelNode(nodeId);
   }
 
   public setBackendConfig(config: BackendRuntimeConfig | null): void {
+    const wasReady = Boolean(this.state.backendConfig);
+
     this.setState({
       backendConfig: config
     });
+
+    if (config && !wasReady) {
+      void this.workflowCoordinator.resumeScene(this.state.selectedNodeId);
+    }
   }
 
   public setMessage(message: string | null): void {
     this.setState({
       message
     });
-  }
-
-  private createWorkflowContext(
-    nodeId: string,
-    stepId: StoryWorkflowStepId
-  ) {
-    if (!this.state.tree || !this.state.backendConfig) {
-      throw new Error("Cannot create workflow context without tree and backend config.");
-    }
-
-    return {
-      backend: this.options.services.backend,
-      config: this.state.backendConfig,
-      storyId: this.state.storyId,
-      selectedNodeId: nodeId,
-      stepId,
-      outputImageFile,
-      now: this.options.services.now
-    };
   }
 
   private applyNavigation(result: { state: StorySessionState; changed: boolean }): void {
@@ -529,6 +384,7 @@ export class StorySessionController {
 
     if (result.changed) {
       void this.saveStory();
+      void this.workflowCoordinator.resumeScene(result.state.selectedNodeId);
     }
   }
 

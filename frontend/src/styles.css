@@ -678,6 +678,28 @@ code {
   gap: 0.5rem;
 }
 
+
+.workflow-auto-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.42rem 0.62rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.workflow-auto-toggle input {
+  width: 0.9rem;
+  height: 0.9rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 .primary-button {
   border-color: rgba(158, 203, 255, 0.65);
   background: linear-gradient(180deg, #d6edff, #9ecbff);
@@ -767,6 +789,25 @@ code {
 .workflow-field-key {
   color: var(--muted);
   font-size: 0.78rem;
+}
+
+
+.workflow-field-copy {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.workflow-field-copy-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.workflow-generated-textarea {
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.025) !important;
+  border-style: dashed;
 }
 
 .workflow-field textarea,

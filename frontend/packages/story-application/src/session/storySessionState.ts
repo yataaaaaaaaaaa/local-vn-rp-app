@@ -79,6 +79,7 @@ export interface StorySessionActions {
     stepId?: StoryWorkflowStepId,
     nodeId?: string | null
   ): Promise<void>;
+  setStepAutoValidate(stepId: StoryWorkflowStepId, enabled: boolean): void;
   applyPresetContext(context: string): Promise<void>;
   applyResolverResult(input: {
     rawText: string;

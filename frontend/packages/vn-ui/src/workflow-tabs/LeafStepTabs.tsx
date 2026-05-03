@@ -41,11 +41,15 @@ export function LeafStepTabs() {
   const runningJob = useStorySessionStore((state) => state.runningJob);
   const busy = useStorySessionStore((state) => state.busy);
   const message = useStorySessionStore((state) => state.message);
+  const autoValidateByStepId = useStorySessionStore(
+    (state) => state.autoValidateGeneratedCandidateByStepId
+  );
 
   const selectWorkflowStep = useStorySessionStore((state) => state.selectWorkflowStep);
   const editStepField = useStorySessionStore((state) => state.editStepField);
   const validateStep = useStorySessionStore((state) => state.validateStep);
   const regenerateStep = useStorySessionStore((state) => state.regenerateStep);
+  const setStepAutoValidate = useStorySessionStore((state) => state.setStepAutoValidate);
   const cancelNode = useStorySessionStore((state) => state.cancelNode);
 
   const canEdit = useStorySessionStore((state) =>
@@ -108,6 +112,17 @@ export function LeafStepTabs() {
           </div>
 
           <div className="workflow-actions">
+            <label className="workflow-auto-toggle" title="When enabled, generated output is validated automatically and the workflow continues to the next step.">
+              <input
+                type="checkbox"
+                checked={autoValidateByStepId[activeStepId]}
+                onChange={(event) =>
+                  setStepAutoValidate(activeStepId, event.currentTarget.checked)
+                }
+              />
+              <span>Auto</span>
+            </label>
+
             {isGenerating && selectedNodeId ? (
               <button
                 type="button"

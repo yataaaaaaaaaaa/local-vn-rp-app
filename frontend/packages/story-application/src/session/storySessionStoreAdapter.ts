@@ -50,6 +50,8 @@ export function createStorySessionStoreState(
       stepId?: StoryWorkflowStepId,
       nodeId?: string | null
     ) => controller.continueFrom(stepId, nodeId),
+    setStepAutoValidate: (stepId: StoryWorkflowStepId, enabled: boolean) =>
+      controller.setStepAutoValidate(stepId, enabled),
     applyPresetContext: (context: string) =>
       controller.applyPresetContext(context),
     applyResolverResult: (input: {

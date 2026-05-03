@@ -1,5 +1,11 @@
 import { useMemo, useState } from "react";
-import { parseImageRef, toFileUrl } from "@local-vn/story-domain";
+import {
+  getParentId,
+  parseImageRef,
+  resolveStoryNodeFields,
+  toFileUrl,
+  type ImageRef
+} from "@local-vn/story-domain";
 import { useRuntimeEventsStore, useStorySessionStore } from "@local-vn/stores";
 
 import {
@@ -18,6 +24,9 @@ export function VisualNovelStage() {
   );
   const storyBusy = useStorySessionStore((state) => state.busy);
   const runningJob = useStorySessionStore((state) => state.runningJob);
+  const tree = useStorySessionStore((state) => state.tree);
+  const selectedNodeId = useStorySessionStore((state) => state.selectedNodeId);
+  const imageRefs = useStorySessionStore((state) => state.imageRefs);
   const activeJobIdsByKind = useRuntimeEventsStore(
     (state) => state.activeJobIdsByKind
   );
@@ -34,7 +43,17 @@ export function VisualNovelStage() {
     () => parseImageRef(parentNode.imageRef),
     [parentNode.imageRef]
   );
-  const displayImage = image ?? parentImage;
+  const displayImage = useMemo(
+    () =>
+      selectLastAvailableImage({
+        tree,
+        selectedNodeId,
+        imageRefs,
+        currentImage: image,
+        parentImage
+      }),
+    [tree, selectedNodeId, imageRefs, image, parentImage]
+  );
 
   const llmStreamJobId =
     activeJobIdsByKind.llm ?? (storyBusy ? latestJobIdsByKind.llm : undefined);
@@ -44,7 +63,9 @@ export function VisualNovelStage() {
   const activeDialogueStream =
     runningJob?.stepId === "dialogue" ? streamedDialogue : "";
   const imageIsGenerating =
-    storyBusy && runningJob?.stepId === "image" && !image;
+    storyBusy &&
+    runningJob?.nodeId === selectedNodeId &&
+    runningJob?.stepId === "image";
 
   async function submitUserText() {
     const text = userText.trim();
@@ -135,4 +156,33 @@ export function VisualNovelStage() {
       </div>
     </section>
   );
+}
+
+
+function selectLastAvailableImage(input: {
+  tree: Parameters<typeof resolveStoryNodeFields>[0];
+  selectedNodeId: string | null;
+  imageRefs: Record<string, ImageRef>;
+  currentImage: ImageRef | null;
+  parentImage: ImageRef | null;
+}): ImageRef | null {
+  if (input.currentImage) {
+    return input.currentImage;
+  }
+
+  let nodeId = input.selectedNodeId;
+
+  while (nodeId) {
+    const imageRef =
+      input.imageRefs[nodeId] ??
+      parseImageRef(resolveStoryNodeFields(input.tree, nodeId).imageRef);
+
+    if (imageRef) {
+      return imageRef;
+    }
+
+    nodeId = getParentId(input.tree, nodeId);
+  }
+
+  return input.parentImage;
 }

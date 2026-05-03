@@ -10,7 +10,7 @@ export * from "./generation/modelLoading";
 export * from "./usecases/editStepField";
 export * from "./usecases/generateStepCandidate";
 export * from "./usecases/commitStep";
-export * from "./usecases/continueWorkflow";
+export * from "./workflow/sceneWorkflowCoordinator";
 export * from "./usecases/completeSceneAndAdvance";
 export * from "./usecases/applyPresetContext";
 export * from "./usecases/applyResolverResult";

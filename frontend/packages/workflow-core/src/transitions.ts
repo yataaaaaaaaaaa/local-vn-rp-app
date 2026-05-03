@@ -49,7 +49,7 @@ export function setWorkflowStepEdited<TStepId extends string, TPayload>(
   const stepState = ensureWorkflowStepState(snapshot, stepId, createEmptyPayload);
 
   stepState.edited = value;
-  stepState.status = stepState.status === "validated" ? "validated" : "candidate";
+  stepState.status = "candidate";
   stepState.error = undefined;
 
   snapshot.activeStepId = stepId;
