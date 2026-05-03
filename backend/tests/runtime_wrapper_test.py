@@ -119,6 +119,7 @@ class RuntimeWrapperTest(unittest.TestCase):
             request = FakeAnythingBackend.instances[-1].requests[-1].kwargs
             self.assertEqual(request["model_path"], "D:/models/image.safetensors")
             self.assertEqual(request["prompt_lora_dir"], "D:/loras")
+            self.assertEqual(request["prompt_embedding_dir"], "D:/embeddings")
             self.assertEqual(request["sampler_name"], "euler_ancestral")
 
     def test_cancel_delegates_to_abort_all(self) -> None:

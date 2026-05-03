@@ -296,8 +296,12 @@ class BackendRuntimeWrapper:
             model_path=model_path,
             prompt=str(request.get("positive_prompt", "")),
             negative_prompt=str(request.get("negative_prompt", "")),
-            prompt_lora_dir=str(settings.get("lora_root", "")),
-            prompt_embedding_dir=str(settings.get("embedding_root", "")),
+            prompt_lora_dir=str(
+                request.get("lora_root") or settings.get("lora_root", "")
+            ),
+            prompt_embedding_dir=str(
+                request.get("embedding_root") or settings.get("embedding_root", "")
+            ),
             output_path=output_path,
             width=int(request.get("width", 1024)),
             height=int(request.get("height", 1024)),

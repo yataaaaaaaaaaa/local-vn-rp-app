@@ -6,3 +6,4 @@ export * from "./useLayoutStore";
 export * from "./useResolverStore";
 export * from "./useRuntimeEventsStore";
 export * from "./useStorySessionStore";
+export * from "./useFrontendPreferencesStore";

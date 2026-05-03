@@ -1,7 +1,14 @@
 import { useState } from "react";
-import { toFileUrl } from "@local-vn/story-domain";
 import {
-  selectDisplayedImageRef,
+  getParentId,
+  storyWorkflowStepIds,
+  toFileUrl
+} from "@local-vn/story-domain";
+import {
+  selectActiveWorkflowStep,
+  selectCurrentNodeImageRef,
+  selectParentNodeImageRef,
+  useFrontendPreferencesStore,
   useRuntimeEventsStore,
   useStorySessionStore
 } from "@local-vn/stores";
@@ -10,6 +17,10 @@ import {
   useResolvedCurrentNode,
   useResolvedParentNode
 } from "./useResolvedCurrentNode";
+import { KSamplerProgress } from "./workflow-tabs/KSamplerProgress";
+
+const dialogueStepIndex = storyWorkflowStepIds.indexOf("dialogue");
+const imageStepIndex = storyWorkflowStepIds.indexOf("image");
 
 export function VisualNovelStage() {
   const node = useResolvedCurrentNode();
@@ -23,7 +34,17 @@ export function VisualNovelStage() {
   const storyBusy = useStorySessionStore((state) => state.busy);
   const runningJob = useStorySessionStore((state) => state.runningJob);
   const selectedNodeId = useStorySessionStore((state) => state.selectedNodeId);
-  const displayImage = useStorySessionStore(selectDisplayedImageRef);
+  const tree = useStorySessionStore((state) => state.tree);
+  const activeStepId = useStorySessionStore(selectActiveWorkflowStep);
+  const currentSceneImage = useStorySessionStore(selectCurrentNodeImageRef);
+  const previousSceneImage = useStorySessionStore(selectParentNodeImageRef);
+  const generateUserAnswerFromLlm = useFrontendPreferencesStore(
+    (state) => state.generateUserAnswerFromLlm
+  );
+  const setGenerateUserAnswerFromLlm = useFrontendPreferencesStore(
+    (state) => state.setGenerateUserAnswerFromLlm
+  );
+
   const activeJobIdsByKind = useRuntimeEventsStore(
     (state) => state.activeJobIdsByKind
   );
@@ -31,21 +52,53 @@ export function VisualNovelStage() {
     (state) => state.latestJobIdsByKind
   );
   const textByJobId = useRuntimeEventsStore((state) => state.textByJobId);
+  const imageProgressByJobId = useRuntimeEventsStore(
+    (state) => state.imageProgressByJobId
+  );
 
   const [userText, setUserText] = useState("");
-  const [autoGenerate, setAutoGenerate] = useState(true);
+
+  const currentStepIndex = storyWorkflowStepIds.indexOf(activeStepId);
+  const hasParentScene = Boolean(getParentId(tree, selectedNodeId));
 
   const llmStreamJobId =
     activeJobIdsByKind.llm ?? (storyBusy ? latestJobIdsByKind.llm : undefined);
   const streamedDialogue = llmStreamJobId
     ? textByJobId[llmStreamJobId] ?? ""
     : "";
-  const activeDialogueStream =
-    runningJob?.stepId === "dialogue" ? streamedDialogue : "";
-  const imageIsGenerating =
+  const isGeneratingCurrentDialogue =
+    storyBusy &&
+    runningJob?.nodeId === selectedNodeId &&
+    runningJob?.stepId === "dialogue";
+  const isGeneratingImage =
     storyBusy &&
     runningJob?.nodeId === selectedNodeId &&
     runningJob?.stepId === "image";
+
+  const imageJobId =
+    activeJobIdsByKind.image ?? (storyBusy ? latestJobIdsByKind.image : undefined);
+  const imageProgress = imageJobId
+    ? imageProgressByJobId[imageJobId] ?? null
+    : null;
+
+  const hasReachedDialogue =
+    currentStepIndex >= dialogueStepIndex && Boolean(node.dialogue.trim());
+  const isBeforeDialogue = currentStepIndex < dialogueStepIndex;
+  const dialogueText = hasReachedDialogue
+    ? node.dialogue
+    : isGeneratingCurrentDialogue
+      ? streamedDialogue || node.dialogue || parentNode.dialogue || "..."
+      : isBeforeDialogue && hasParentScene
+        ? parentNode.dialogue || parentNode.context || "..."
+        : "...";
+
+  const hasReachedImage =
+    currentStepIndex >= imageStepIndex && Boolean(currentSceneImage);
+  const displayImage = hasReachedImage
+    ? currentSceneImage
+    : isGeneratingImage || (isBeforeDialogue && hasParentScene)
+      ? previousSceneImage
+      : null;
 
   async function submitUserText() {
     const text = userText.trim();
@@ -54,7 +107,7 @@ export function VisualNovelStage() {
       return;
     }
 
-    if (autoGenerate) {
+    if (generateUserAnswerFromLlm) {
       await submitUserTextToStory(text);
     } else {
       await createChildFromCurrent(text);
@@ -63,28 +116,29 @@ export function VisualNovelStage() {
     setUserText("");
   }
 
-  const fallbackDialogue = parentNode.dialogue || parentNode.context;
-  const dialogueText =
-    activeDialogueStream ||
-    node.dialogue ||
-    node.context ||
-    fallbackDialogue ||
-    "The story is ready. Enter the player action or line below.";
-
   return (
     <section className="vn-stage" aria-label="Visual novel stage">
       <div className="vn-image-pane">
         <div className="vn-image-box">
+          {isGeneratingImage ? (
+            <div className="vn-image-progress">
+              <KSamplerProgress
+                runningJob={runningJob}
+                progressEvent={imageProgress}
+                compact
+              />
+            </div>
+          ) : null}
+
           {displayImage ? (
             <img
               src={toFileUrl(displayImage.image_path)}
               alt={`Generated scene ${displayImage.image_id}`}
             />
-          ) : (
+          ) : null}
+
+          {!displayImage && !isGeneratingImage ? (
             <span className="small">No image linked to this node yet.</span>
-          )}
-          {imageIsGenerating ? (
-            <span className="vn-image-loading">Generating image...</span>
           ) : null}
         </div>
       </div>
@@ -92,7 +146,7 @@ export function VisualNovelStage() {
       <div className="vn-dialogue-pane">
         <div className="vn-dialogue-scroll">
           {dialogueText}
-          {storyBusy && activeDialogueStream ? (
+          {isGeneratingCurrentDialogue ? (
             <span className="stream-caret" aria-hidden="true">
               |
             </span>
@@ -117,11 +171,16 @@ export function VisualNovelStage() {
         </label>
 
         <div className="vn-actions vn-input-actions">
-          <label className="vn-auto-generate-toggle" title="Continue the workflow with the LLM after adding this user text">
+          <label
+            className="vn-auto-generate-toggle"
+            title="Continue the workflow with the LLM after adding this user text"
+          >
             <input
               type="checkbox"
-              checked={autoGenerate}
-              onChange={(event) => setAutoGenerate(event.currentTarget.checked)}
+              checked={generateUserAnswerFromLlm}
+              onChange={(event) =>
+                setGenerateUserAnswerFromLlm(event.currentTarget.checked)
+              }
             />
             <span>LLM</span>
           </label>
@@ -130,7 +189,11 @@ export function VisualNovelStage() {
             disabled={storyBusy || !userText.trim()}
             onClick={() => void submitUserText()}
           >
-            {storyBusy ? "Streaming..." : autoGenerate ? "Send + Generate" : "Add Text"}
+            {storyBusy
+              ? "Streaming..."
+              : generateUserAnswerFromLlm
+                ? "Send + Generate"
+                : "Add Text"}
           </button>
         </div>
       </div>

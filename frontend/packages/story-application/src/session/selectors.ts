@@ -69,6 +69,34 @@ export function selectCanValidateStep(
   });
 }
 
+export function selectCurrentNodeImageRef(
+  state: Pick<
+    StorySessionState,
+    "tree" | "selectedNodeId" | "imageRefs" | "workflowByNodeId"
+  >
+): ImageRef | null {
+  return findNodeImageRef({
+    tree: state.tree,
+    nodeId: state.selectedNodeId,
+    imageRefs: state.imageRefs,
+    workflowByNodeId: state.workflowByNodeId
+  });
+}
+
+export function selectParentNodeImageRef(
+  state: Pick<
+    StorySessionState,
+    "tree" | "selectedNodeId" | "imageRefs" | "workflowByNodeId"
+  >
+): ImageRef | null {
+  return findNodeImageRef({
+    tree: state.tree,
+    nodeId: getParentId(state.tree, state.selectedNodeId),
+    imageRefs: state.imageRefs,
+    workflowByNodeId: state.workflowByNodeId
+  });
+}
+
 export function selectDisplayedImageRef(
   state: Pick<
     StorySessionState,
@@ -85,6 +113,23 @@ export function selectDisplayedImageRef(
   return selectedImage ?? selectLatestStoredImageRef(state.imageRefs);
 }
 
+function findNodeImageRef(input: {
+  tree: StorySessionState["tree"];
+  nodeId: string | null;
+  imageRefs: StorySessionState["imageRefs"];
+  workflowByNodeId: StorySessionState["workflowByNodeId"];
+}): ImageRef | null {
+  if (!input.nodeId) {
+    return null;
+  }
+
+  return (
+    parseWorkflowImageRef(input.workflowByNodeId[input.nodeId]) ??
+    input.imageRefs[input.nodeId] ??
+    parseStableImageRef(resolveStoryNodeFields(input.tree, input.nodeId).imageRef)
+  );
+}
+
 function findNearestImageRef(input: {
   tree: StorySessionState["tree"];
   selectedNodeId: string | null;
@@ -94,10 +139,12 @@ function findNearestImageRef(input: {
   let nodeId = input.selectedNodeId;
 
   while (nodeId) {
-    const imageRef =
-      parseWorkflowImageRef(input.workflowByNodeId[nodeId]) ??
-      input.imageRefs[nodeId] ??
-      parseStableImageRef(resolveStoryNodeFields(input.tree, nodeId).imageRef);
+    const imageRef = findNodeImageRef({
+      tree: input.tree,
+      nodeId,
+      imageRefs: input.imageRefs,
+      workflowByNodeId: input.workflowByNodeId
+    });
 
     if (imageRef) {
       return imageRef;

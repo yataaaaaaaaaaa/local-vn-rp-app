@@ -3,6 +3,7 @@ import { useBackendClientStore } from "./useBackendClientStore";
 import { useBackendConfigStore } from "./useBackendConfigStore";
 import { useLauncherStore } from "./useLauncherStore";
 import { useLayoutStore } from "./useLayoutStore";
+import { useFrontendPreferencesStore } from "./useFrontendPreferencesStore";
 import { useResolverStore } from "./useResolverStore";
 import { useRuntimeEventsStore } from "./useRuntimeEventsStore";
 import { useStorySessionStore } from "./useStorySessionStore";
@@ -15,6 +16,7 @@ export async function bootstrapFrontend(): Promise<void> {
   useLauncherStore.getState().initialize(args);
 
   await useLayoutStore.getState().load();
+  await useFrontendPreferencesStore.getState().load();
   await useBackendConfigStore.getState().load();
   await useResolverStore.getState().load();
 

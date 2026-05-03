@@ -1,7 +1,15 @@
 import type { BackendRuntimeConfig } from "@local-vn/shared-types";
 import {
+  addStoryChildNode,
+  createEmptyStoryNodeFields,
+  createStoryTreeBundle,
+  fieldsForStoryWorkflowStep,
+  getChildIds,
+  getParentId,
   resolveStoryNodeFields,
+  storyWorkflowStepIds,
   type StoryNodeFieldKey,
+  type StoryNodeFields,
   type StoryWorkflowStepId
 } from "@local-vn/story-domain";
 
@@ -35,6 +43,7 @@ import {
 import {
   applyStorySessionPatch,
   createInitialStorySessionState,
+  createStorySessionStateFromBundle,
   type StorySessionControllerOptions,
   type StorySessionListener,
   type StorySessionPatch,
@@ -81,8 +90,6 @@ export class StorySessionController {
   }
 
   public async createStory(title: string): Promise<void> {
-    let selectedNodeId: string | null = null;
-
     await this.runBusy(async () => {
       const result = await createStoryUseCase({
         title,
@@ -91,12 +98,12 @@ export class StorySessionController {
 
       this.state = {
         ...result.state,
-        backendConfig: this.state.backendConfig
+        backendConfig: this.state.backendConfig,
+        autoValidateGeneratedCandidateByStepId:
+          this.state.autoValidateGeneratedCandidateByStepId,
+        busy: false
       };
-      selectedNodeId = this.state.selectedNodeId;
     });
-
-    await this.workflowCoordinator.resumeScene(selectedNodeId);
   }
 
   public async loadStory(storyId: string): Promise<void> {
@@ -110,7 +117,11 @@ export class StorySessionController {
       });
 
       if (result.state) {
-        this.state = result.state;
+        this.state = {
+          ...result.state,
+          autoValidateGeneratedCandidateByStepId:
+            this.state.autoValidateGeneratedCandidateByStepId
+        };
         selectedNodeId = result.state.selectedNodeId;
       }
     });
@@ -176,7 +187,10 @@ export class StorySessionController {
 
     if (result.changed) {
       await this.saveStory();
-      await this.continueFrom("dialogue", result.selectedNodeId ?? this.state.selectedNodeId);
+      await this.continueFrom(
+        "dialogue",
+        result.selectedNodeId ?? this.state.selectedNodeId
+      );
     }
   }
 
@@ -188,7 +202,10 @@ export class StorySessionController {
       await this.saveStory();
 
       if (userText?.trim()) {
-        await this.continueFrom("dialogue", result.selectedNodeId ?? this.state.selectedNodeId);
+        await this.continueFrom(
+          "dialogue",
+          result.selectedNodeId ?? this.state.selectedNodeId
+        );
       }
     }
   }
@@ -225,6 +242,11 @@ export class StorySessionController {
     }
 
     try {
+      if (this.shouldCreateBranchOnEdit()) {
+        this.editStepFieldInNewBranch(stepId, field, value);
+        return;
+      }
+
       const result = editStepFieldUseCase({
         workflowByNodeId: this.state.workflowByNodeId,
         nodeId: this.state.selectedNodeId,
@@ -374,6 +396,87 @@ export class StorySessionController {
     });
   }
 
+  private shouldCreateBranchOnEdit(): boolean {
+    return Boolean(
+      this.state.tree &&
+        this.state.selectedNodeId &&
+        getChildIds(this.state.tree, this.state.selectedNodeId).length > 0
+    );
+  }
+
+  private editStepFieldInNewBranch(
+    stepId: StoryWorkflowStepId,
+    field: StoryNodeFieldKey,
+    value: string
+  ): void {
+    if (!this.state.tree || !this.state.selectedNodeId) {
+      return;
+    }
+
+    const selectedNodeId = this.state.selectedNodeId;
+    const currentFields = resolveStoryNodeFields(this.state.tree, selectedNodeId);
+    const initialFields = createBranchFields(currentFields, stepId, field, value);
+    const parentId = getParentId(this.state.tree, selectedNodeId);
+
+    if (!parentId) {
+      const bundle = createStoryTreeBundle(
+        this.state.manifest?.title ?? "Story",
+        undefined,
+        initialFields
+      );
+      const rootNodeId = bundle.manifest.root_node_id;
+      const rootFields = resolveStoryNodeFields(bundle.tree, rootNodeId);
+      const result = editStepFieldUseCase({
+        workflowByNodeId: {},
+        nodeId: rootNodeId,
+        fields: rootFields,
+        stepId,
+        field,
+        value
+      });
+
+      bundle.workflowByNodeId = result.workflowByNodeId;
+      bundle.activeWorkflowStepId = stepId;
+
+      this.state = createStorySessionStateFromBundle(bundle, {
+        backendConfig: this.state.backendConfig,
+        autoValidateGeneratedCandidateByStepId:
+          this.state.autoValidateGeneratedCandidateByStepId,
+        activeStepId: stepId,
+        dirty: true,
+        message: "Created a new story from the edited root scene."
+      });
+      this.emit();
+      void this.saveStory();
+      return;
+    }
+
+    const branch = addStoryChildNode(this.state.tree, parentId, initialFields);
+    const siblingFields = resolveStoryNodeFields(branch.tree, branch.nodeId);
+    const result = editStepFieldUseCase({
+      workflowByNodeId: this.state.workflowByNodeId,
+      nodeId: branch.nodeId,
+      fields: siblingFields,
+      stepId,
+      field,
+      value
+    });
+
+    this.state = {
+      ...this.state,
+      tree: branch.tree,
+      selectedNodeId: branch.nodeId,
+      workflowByNodeId: result.workflowByNodeId,
+      activeStepId: stepId,
+      historyBack: [...this.state.historyBack, selectedNodeId],
+      historyForward: [],
+      dirty: true,
+      message: "Created a sibling branch for the edited scene."
+    };
+    this.emit();
+    void this.saveStory();
+  }
+
   private applyNavigation(result: { state: StorySessionState; changed: boolean }): void {
     if (!result.changed && result.state === this.state) {
       return;
@@ -436,4 +539,23 @@ export class StorySessionController {
       listener(this.state);
     }
   }
+}
+
+function createBranchFields(
+  source: StoryNodeFields,
+  stepId: StoryWorkflowStepId,
+  field: StoryNodeFieldKey,
+  value: string
+): StoryNodeFields {
+  const nextFields = createEmptyStoryNodeFields();
+  const endIndex = storyWorkflowStepIds.indexOf(stepId);
+
+  for (const candidateStepId of storyWorkflowStepIds.slice(0, endIndex + 1)) {
+    for (const candidateField of fieldsForStoryWorkflowStep(candidateStepId)) {
+      nextFields[candidateField] = source[candidateField];
+    }
+  }
+
+  nextFields[field] = value;
+  return nextFields;
 }

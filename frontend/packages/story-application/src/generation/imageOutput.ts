@@ -45,6 +45,9 @@ export function buildImageGenerateRequest(input: {
       input.fields.negativePrompt
     ]),
     model_path: input.config.image.model_path || undefined,
+    lora_root: input.config.image.lora_root || undefined,
+    embedding_root: input.config.image.embedding_root || undefined,
+    manual_lora_paths: input.config.image.manual_lora_paths,
     width: input.config.image.default_width,
     height: input.config.image.default_height,
     steps: input.config.image.default_steps,

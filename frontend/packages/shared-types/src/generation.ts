@@ -67,6 +67,9 @@ export interface ImageGenerateRequest {
   positive_prompt: string;
   negative_prompt: string;
   model_path?: string;
+  lora_root?: string;
+  embedding_root?: string;
+  manual_lora_paths?: string[];
   width: number;
   height: number;
   steps: number;

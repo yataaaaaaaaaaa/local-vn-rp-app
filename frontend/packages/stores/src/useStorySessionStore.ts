@@ -7,7 +7,9 @@ import {
   selectCanEditStep,
   selectCanGenerateStep,
   selectCanValidateStep,
+  selectCurrentNodeImageRef,
   selectDisplayedImageRef,
+  selectParentNodeImageRef,
   selectResolvedCurrent,
   type StoryGenerationBackend,
   type StoryModelLoadingBackend,
@@ -26,6 +28,7 @@ import {
 
 import { backendClientOrThrow } from "./useBackendClientStore";
 import { useBackendConfigStore } from "./useBackendConfigStore";
+import { useLayoutStore } from "./useLayoutStore";
 
 export type StorySessionState = StorySessionStoreState;
 
@@ -69,6 +72,10 @@ export const useStorySessionStore = create<StorySessionState>(() =>
 
 storySessionController.subscribe((state) => {
   useStorySessionStore.setState(state);
+
+  if (state.storyId && useLayoutStore.getState().selectedStoryId !== state.storyId) {
+    useLayoutStore.getState().patch({ selectedStoryId: state.storyId });
+  }
 });
 
 useBackendConfigStore.subscribe((state) => {
@@ -89,6 +96,8 @@ export {
   selectCanEditStep,
   selectCanGenerateStep,
   selectCanValidateStep,
+  selectCurrentNodeImageRef,
   selectDisplayedImageRef,
+  selectParentNodeImageRef,
   selectResolvedCurrent
 };

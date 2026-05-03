@@ -230,6 +230,20 @@ code {
   object-fit: contain;
 }
 
+.vn-image-progress {
+  position: absolute;
+  top: 0.7rem;
+  left: 0.7rem;
+  right: 0.7rem;
+  z-index: 1;
+}
+
+.vn-image-progress .workflow-progress {
+  margin-bottom: 0;
+  background: rgba(10, 10, 14, 0.78);
+  backdrop-filter: blur(3px);
+}
+
 .vn-image-loading {
   position: absolute;
   right: 1rem;

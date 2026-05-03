@@ -28,6 +28,7 @@ export function outputRoot(): string { return requireStoragePaths().output_root;
 export function configDirectory(): string { return `${appRoot()}/config`; }
 export function backendRuntimeConfigFile(): string { return `${configDirectory()}/backend.runtime.json`; }
 export function frontendLayoutFile(): string { return `${configDirectory()}/frontend.layout.json`; }
+export function frontendPreferencesFile(): string { return `${configDirectory()}/frontend.preferences.json`; }
 export function resolverConfigFile(): string { return `${configDirectory()}/resolver.config.json`; }
 
 export function storyDirectory(storyId: string): string { return `${storyRoot()}/${safePathSegment(storyId)}`; }
