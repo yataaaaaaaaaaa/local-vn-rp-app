@@ -22,7 +22,6 @@ import {
 } from "./workflowCore";
 import {
   createStoryWorkflowSteps,
-  defaultStoryWorkflowAutoValidateGeneratedCandidate,
   fieldsForStoryWorkflowStep,
   storyWorkflowStepIds,
   type StoryWorkflowAutoValidateByStepId,
@@ -543,10 +542,6 @@ export function selectCurrentWorkflowSnapshot(state: StoryWorkflowRunnerState): 
   return state.workflowByNodeId[state.selectedNodeId] ?? null;
 }
 
-export function createInitialWorkflowByNodeId(nodeId: string, activeStepId: StoryWorkflowStepId = "context"): StoryWorkflowByNodeId {
-  return ensureWorkflowRecord({}, nodeId, activeStepId);
-}
-
 export function ensureWorkflowRecord(
   record: StoryWorkflowByNodeId,
   nodeId: string,
@@ -617,15 +612,6 @@ export function validateGenerationConfig(stepId: StoryWorkflowStepId, config: Ba
   }
   return null;
 }
-
-export const defaultStoryWorkflowRuntimeState = {
-  workflowByNodeId: {} as StoryWorkflowByNodeId,
-  activeStepId: "context" as StoryWorkflowStepId,
-  runningJob: null as StoryWorkflowRunningJob | null,
-  autoValidateGeneratedCandidateByStepId: { ...defaultStoryWorkflowAutoValidateGeneratedCandidate },
-  busy: false,
-  message: null as string | null
-};
 
 function generationKeyFor(nodeId: string, stepId: StoryWorkflowStepId): string {
   return `${nodeId}:${stepId}`;

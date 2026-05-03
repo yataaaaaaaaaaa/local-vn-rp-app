@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BackendClient } from "@local-vn/backend-client";
 import { configureStoragePaths, createDefaultBackendRuntimeConfig, type FilePersistenceApi } from "@local-vn/config";
 import type { StoryNodeFields } from "@local-vn/shared-types";
-import { StoryMechanismSession, generateDanbotPromptForNode, generateImageForNode } from "@local-vn/story-mechanism";
+import { StorySessionController, storyWorkflowStepById } from "@local-vn/story-mechanism";
 
 class FakeBackend implements Pick<BackendClient, "generateLlm" | "generateDanbotTags" | "generateImage" | "loadLlm" | "loadDanbot" | "loadImageModel"> {
   public llmPrompts: string[] = [];
@@ -35,7 +35,7 @@ class FakeBackend implements Pick<BackendClient, "generateLlm" | "generateDanbot
 }
 
 describe("story mechanism", () => {
-  it("runs a complete story step through the package API without React stores", async () => {
+  it("runs a complete story step through the story-session controller without React stores", async () => {
     configureStoragePaths({
       project_name: "local-vn-rp-app",
       app_root: "D:/tmp/story-mechanism",
@@ -50,38 +50,33 @@ describe("story mechanism", () => {
       danbot: { model_path: "fake-danbot" },
       image: { model_path: "fake-image.safetensors", default_steps: 2, sampler: "euler_ancestral" }
     });
-    const session = await StoryMechanismSession.create({
-      api,
-      backend,
-      config,
-      title: "Mechanism Test",
-      storyId: "mechanism-test",
-      initialFields: { context: "A quiet archive waits." }
+    const session = new StorySessionController({
+      persistence: () => api,
+      backend: () => backend,
+      getConfig: () => config
     });
 
-    const result = await session.runFullStoryStep({
-      childNodeId: "step-1",
-      imageId: "image-1",
-      imageSeed: 42,
-      createdAt: "2026-04-30T00:00:00.000Z"
-    });
+    await session.createStory("Mechanism Test", "mechanism-test", { context: "A quiet archive waits." });
+    const sceneNodeId = session.createChildFromCurrent({}, "userText", { autoContinue: false });
 
-    expect(result.nodeId).toBe("step-1");
-    expect(result.userText).toContain("silver door");
-    expect(result.dialogue).toContain("archivist");
-    expect(result.visualDescription).toContain("silver door");
-    expect(result.positivePrompt).toBe("silver door, rain, glowing");
-    expect(result.imageRef.image_path).toBe("D:/tmp/story-mechanism/outputs/mechanism-test/image-1.png");
-    expect(await api.readJson<StoryNodeFields>("D:/tmp/story-mechanism/stories/mechanism-test/nodes/step-1.json", {} as StoryNodeFields)).toMatchObject({
-      userText: result.userText,
-      dialogue: result.dialogue,
-      visualDescription: result.visualDescription,
-      positivePrompt: result.positivePrompt
+    await session.regenerateStep("userText");
+    expect(session.getState().activeStepId).toBe("dialogue");
+
+    await session.regenerateStep("dialogue");
+
+    const persistedNode = await api.readJson<StoryNodeFields>(`D:/tmp/story-mechanism/stories/mechanism-test/nodes/${sceneNodeId}.json`, {} as StoryNodeFields);
+    expect(persistedNode).toMatchObject({
+      userText: "I check the silver door.",
+      dialogue: "The archivist nods and unlocks the way forward.",
+      visualDescription: "A silver door glows under rain-streaked glass.",
+      danbotTags: "silver door, rain, glowing",
+      positivePrompt: "silver door, rain, glowing"
     });
+    expect(persistedNode.imageRef).toContain(`node_${sceneNodeId}_`);
     expect(backend.llmPrompts).toHaveLength(3);
   });
 
-  it("keeps individual tab actions available as direct API calls", async () => {
+  it("keeps individual workflow steps available as direct package definitions", async () => {
     configureStoragePaths({
       project_name: "local-vn-rp-app",
       app_root: "D:/tmp/story-mechanism",
@@ -93,13 +88,14 @@ describe("story mechanism", () => {
       danbot: { model_path: "fake-danbot" },
       image: { model_path: "fake-image.safetensors" }
     });
-    const node = emptyNode({ context: "Archive", danbotTags: "rain", positivePrompt: "rain", negativePrompt: "lowres" });
+    const document = emptyNode({ context: "Archive", danbotTags: "rain", positivePrompt: "rain", negativePrompt: "lowres" });
+    const context = { backend, config, storyId: "s", selectedNodeId: "n" };
 
-    await expect(generateDanbotPromptForNode({ backend, config, node, storyId: "s", selectedNodeId: "n" })).resolves.toMatchObject({
-      danbotTags: "silver door, rain, glowing"
+    await expect(storyWorkflowStepById.danbot.generate?.({ document, context })).resolves.toMatchObject({
+      value: { danbotTags: "silver door, rain, glowing" }
     });
-    await expect(generateImageForNode({ backend, config, node, storyId: "s", selectedNodeId: "n", imageId: "img", seed: 7 })).resolves.toMatchObject({
-      imageRef: { image_id: "img", seed: 7 }
+    await expect(storyWorkflowStepById.image.generate?.({ document, context })).resolves.toMatchObject({
+      value: { imageRef: expect.stringContaining("node_n_") }
     });
   });
 });

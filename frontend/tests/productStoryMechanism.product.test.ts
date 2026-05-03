@@ -3,7 +3,8 @@ import { dirname } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BackendClient } from "@local-vn/backend-client";
 import { configureStoragePaths, createDefaultBackendRuntimeConfig, type FilePersistenceApi } from "@local-vn/config";
-import { StoryMechanismSession, loadStoryMechanismModels } from "@local-vn/story-mechanism";
+import { StorySessionController, loadStoryMechanismModels } from "@local-vn/story-mechanism";
+import { parseImageRef, resolveStoryNodeFields } from "@local-vn/story-tree";
 
 const runProductTest = process.env.LOCAL_VN_RP_RUN_STORY_MECHANISM_PRODUCT_TEST === "1";
 const describeProduct = runProductTest ? describe : describe.skip;
@@ -54,23 +55,23 @@ describeProduct("story mechanism product smoke", () => {
     });
 
     await loadStoryMechanismModels(backend, config);
-    const session = await StoryMechanismSession.create({
-      api: new NodeFilePersistenceApi(),
-      backend,
-      config,
-      title: "Product Story Mechanism Smoke",
-      storyId: "product-story-mechanism-smoke",
-      initialFields: {
-        context: "A safe-for-work visual novel scene begins in a moonlit archive. Keep the scene concise, concrete, and visual."
-      }
+    const api = new NodeFilePersistenceApi();
+    const session = new StorySessionController({
+      persistence: () => api,
+      backend: () => backend,
+      getConfig: () => config
+    });
+    await session.createStory("Product Story Mechanism Smoke", "product-story-mechanism-smoke", {
+      context: "A safe-for-work visual novel scene begins in a moonlit archive. Keep the scene concise, concrete, and visual."
     });
 
-    const step = await session.runFullStoryStep({
-      childNodeId: "step-1",
-      imageId: "story-mechanism-step-1",
-      imageSeed: 12345,
-      createdAt: "2026-04-30T00:00:00.000Z"
-    });
+    const sceneNodeId = session.createChildFromCurrent({}, "userText", { autoContinue: false });
+    await session.regenerateStep("userText");
+    await session.regenerateStep("dialogue");
+
+    const step = resolveStoryNodeFields(session.getState().tree, sceneNodeId);
+    const imageRef = parseImageRef(step.imageRef);
+    expect(imageRef).not.toBeNull();
 
     expect(step.userText.length).toBeGreaterThan(5);
     expect(step.dialogue.length).toBeGreaterThan(10);
@@ -78,17 +79,17 @@ describeProduct("story mechanism product smoke", () => {
     expect(step.danbotTags.length).toBeGreaterThan(5);
     expect(step.positivePrompt.length).toBeGreaterThan(5);
 
-    const imageBytes = await readFile(step.imageRef.image_path);
+    const imageBytes = await readFile(imageRef!.image_path);
     expect([...imageBytes.subarray(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-    const metadata = JSON.parse(await readFile(step.imageRef.metadata_path, "utf8")) as { metadata: Record<string, unknown>; request: Record<string, unknown> };
+    const metadata = JSON.parse(await readFile(imageRef!.metadata_path, "utf8")) as { metadata: Record<string, unknown>; request: Record<string, unknown> };
     expect(metadata.metadata).toMatchObject({
       story_id: "product-story-mechanism-smoke",
-      node_id: "step-1",
-      image_id: "story-mechanism-step-1"
+      node_id: sceneNodeId,
+      image_id: imageRef!.image_id
     });
     expect(metadata.request.steps).toBe(config.image.default_steps);
 
-    const persistedNode = JSON.parse(await readFile(`${env.storyRoot}/product-story-mechanism-smoke/nodes/step-1.json`, "utf8")) as Record<string, string>;
+    const persistedNode = JSON.parse(await readFile(`${env.storyRoot}/product-story-mechanism-smoke/nodes/${sceneNodeId}.json`, "utf8")) as Record<string, string>;
     expect(persistedNode).toMatchObject({
       userText: step.userText,
       dialogue: step.dialogue,

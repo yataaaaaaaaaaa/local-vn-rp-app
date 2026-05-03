@@ -4,6 +4,7 @@ import { parseImageRef } from "@local-vn/story-tree";
 import {
   createStoryWorkflowSteps,
   fieldsForStoryWorkflowStep,
+  selectCurrentWorkflowSnapshot,
   storyWorkflowStepIds,
   type StoryWorkflowPayload,
   type StoryWorkflowStepId
@@ -12,7 +13,6 @@ import {
   selectCanEditStep,
   selectCanGenerateStep,
   selectCanValidateStep,
-  selectCurrentWorkflowSnapshot,
   useRuntimeEventsStore,
   useStorySessionStore
 } from "@local-vn/stores";
