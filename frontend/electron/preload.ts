@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("appPersistence", {
   exists: (path: string) => ipcRenderer.invoke("persistence:exists", path),
   remove: (path: string) => ipcRenderer.invoke("persistence:remove", path),
   ensureDir: (path: string) => ipcRenderer.invoke("persistence:ensureDir", path),
+  listDirectories: (path: string) => ipcRenderer.invoke("persistence:listDirectories", path),
   showItem: (path: string) => ipcRenderer.invoke("shell:showItem", path)
 });
 

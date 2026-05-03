@@ -106,6 +106,26 @@ export class StorySessionController {
     });
   }
 
+  public async renameStory(title: string): Promise<void> {
+    const trimmed = title.trim();
+
+    if (!trimmed || !this.state.manifest) {
+      return;
+    }
+
+    this.setState({
+      manifest: {
+        ...this.state.manifest,
+        title: trimmed,
+        updated_at: new Date().toISOString()
+      },
+      dirty: true,
+      message: "Story renamed."
+    });
+
+    await this.saveStory();
+  }
+
   public async loadStory(storyId: string): Promise<void> {
     let selectedNodeId: string | null = null;
 
@@ -119,8 +139,10 @@ export class StorySessionController {
       if (result.state) {
         this.state = {
           ...result.state,
+          backendConfig: this.state.backendConfig,
           autoValidateGeneratedCandidateByStepId:
-            this.state.autoValidateGeneratedCandidateByStepId
+            this.state.autoValidateGeneratedCandidateByStepId,
+          busy: false
         };
         selectedNodeId = result.state.selectedNodeId;
       }
@@ -370,12 +392,12 @@ export class StorySessionController {
     }
   }
 
-  public cancelAll(): void {
-    this.workflowCoordinator.cancelAll();
+  public async cancelAll(): Promise<void> {
+    await this.workflowCoordinator.cancelAll();
   }
 
-  public cancelNode(nodeId: string): void {
-    this.workflowCoordinator.cancelNode(nodeId);
+  public async cancelNode(nodeId: string): Promise<void> {
+    await this.workflowCoordinator.cancelNode(nodeId);
   }
 
   public setBackendConfig(config: BackendRuntimeConfig | null): void {

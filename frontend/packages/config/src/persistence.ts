@@ -9,6 +9,7 @@ export interface FilePersistenceApi {
   exists(path: string): Promise<boolean>;
   remove(path: string): Promise<void>;
   ensureDir(path: string): Promise<void>;
+  listDirectories(path: string): Promise<string[]>;
 }
 
 export async function readJsonFile<T>(api: FilePersistenceApi, path: string, fallback: T): Promise<T> {

@@ -125,7 +125,7 @@ code {
   margin: 0 auto;
   padding: clamp(0.5rem, 1vw, 0.85rem);
   display: grid;
-  grid-template-rows: 2.45rem minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr);
   gap: 0.65rem;
   background: linear-gradient(180deg, rgba(24, 24, 32, 0.98), rgba(13, 13, 18, 0.98));
   border: 1px solid var(--border);
@@ -192,6 +192,7 @@ code {
 }
 
 .vn-stage {
+  grid-row: 3;
   min-height: 0;
   height: 100%;
   width: 100%;
@@ -966,7 +967,7 @@ code {
   .visual-novel-stage-panel {
     height: 100svh;
     padding: 0.45rem;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
   }
 
   .vn-menu-bar {
@@ -1010,4 +1011,54 @@ code {
   .workflow-actions {
     justify-content: flex-start;
   }
+}
+
+.story-inline-panel {
+  grid-row: 2;
+  min-width: 0;
+  display: grid;
+  gap: 0.55rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 18px;
+  background: rgba(10, 10, 14, 0.72);
+  padding: 0.65rem;
+}
+
+.story-inline-panel-header,
+.story-rename-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.story-inline-panel-header {
+  justify-content: space-between;
+}
+
+.story-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0.45rem;
+  max-height: 14rem;
+  overflow: auto;
+}
+
+.story-list-item {
+  display: grid;
+  justify-items: start;
+  gap: 0.2rem;
+  text-align: left;
+  border-radius: 14px;
+  padding: 0.6rem 0.75rem;
+}
+
+.story-list-item span,
+.story-list-item code {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.story-rename-row input {
+  flex: 1 1 auto;
+  min-width: 0;
 }

@@ -60,18 +60,25 @@ export class SceneWorkflowCoordinator {
     private readonly services: StorySessionServices
   ) {}
 
-  public cancelAll(message = "Workflow cancelled."): void {
+  public async cancelAll(message = "Workflow cancelled."): Promise<void> {
     this.abortCurrentRun();
-    this.host.setState({
-      busy: false,
-      runningJob: null,
-      message
-    });
+
+    try {
+      await this.services.backend.cancelAll?.();
+    } catch (error) {
+      this.services.onError?.(error);
+    } finally {
+      this.host.setState({
+        busy: false,
+        runningJob: null,
+        message
+      });
+    }
   }
 
-  public cancelNode(nodeId: string): void {
+  public async cancelNode(nodeId: string): Promise<void> {
     if (this.currentRun?.nodeId === nodeId) {
-      this.cancelAll();
+      await this.cancelAll();
     }
   }
 
@@ -150,6 +157,11 @@ export class SceneWorkflowCoordinator {
       return;
     }
 
+    if (this.shouldPauseForUserText(stepId, input.reason)) {
+      await this.pauseForUserText(nodeId);
+      return;
+    }
+
     if (!state.backendConfig) {
       return;
     }
@@ -172,7 +184,11 @@ export class SceneWorkflowCoordinator {
         nodeId,
         fields: resolveStoryNodeFields(this.host.getState().tree, nodeId),
         stepId,
-        context: this.createWorkflowContext(nodeId, stepId),
+        context: this.createWorkflowContext(
+          nodeId,
+          stepId,
+          run.abortController.signal
+        ),
         abortSignal: run.abortController.signal
       });
 
@@ -369,10 +385,16 @@ export class SceneWorkflowCoordinator {
         busy: false,
         runningJob: null,
         dirty: true,
-        message: "Next scene created. Add the player text to continue."
+        message: "Next scene created."
       });
 
       await this.host.saveStory();
+
+      await this.startGeneration({
+        nodeId: advanced.nextNodeId,
+        stepId: nextWorkflow?.activeStepId ?? "userText",
+        reason: "auto"
+      });
     } catch (error) {
       if (!this.isCurrentRun(run)) {
         return;
@@ -385,6 +407,45 @@ export class SceneWorkflowCoordinator {
       });
       this.host.handleError(error);
     }
+  }
+
+  private shouldPauseForUserText(
+    stepId: StoryWorkflowStepId,
+    reason: StartSceneStepGenerationInput["reason"]
+  ): boolean {
+    if (stepId !== "userText" || reason === "manual") {
+      return false;
+    }
+
+    return !this.services.userInputPolicy?.shouldAutoGenerateUserText();
+  }
+
+  private async pauseForUserText(nodeId: string): Promise<void> {
+    const state = this.host.getState();
+
+    if (!state.tree) {
+      return;
+    }
+
+    this.abortCurrentRun();
+
+    const workflowByNodeId = cloneWorkflowByNodeId(state.workflowByNodeId);
+    const fields = resolveStoryNodeFields(state.tree, nodeId);
+    const workflow = ensureWorkflowRecord(workflowByNodeId, nodeId, fields);
+    workflow.frontierStepId = "userText";
+    workflow.activeStepId = "userText";
+    workflow.machineState = "editing";
+
+    this.host.setState({
+      workflowByNodeId,
+      activeStepId: "userText",
+      busy: false,
+      runningJob: null,
+      dirty: true,
+      message: "Waiting for player input."
+    });
+
+    await this.host.saveStory();
   }
 
   private createRun(
@@ -416,7 +477,8 @@ export class SceneWorkflowCoordinator {
 
   private createWorkflowContext(
     nodeId: string,
-    stepId: StoryWorkflowStepId
+    stepId: StoryWorkflowStepId,
+    abortSignal?: AbortSignal
   ): StoryStepGenerationContext {
     const state = this.host.getState();
 
@@ -430,7 +492,8 @@ export class SceneWorkflowCoordinator {
       storyId: state.storyId,
       selectedNodeId: nodeId,
       outputImageFile,
-      now: this.services.now
+      now: this.services.now,
+      abortSignal
     };
   }
 }

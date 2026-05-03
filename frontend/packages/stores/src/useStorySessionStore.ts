@@ -14,6 +14,7 @@ import {
   type StoryGenerationBackend,
   type StoryModelLoadingBackend,
   type StoryPersistencePort,
+  type StoryRuntimeControlBackend,
   type StorySessionStoreState
 } from "@local-vn/story-application";
 import {
@@ -21,6 +22,7 @@ import {
 } from "@local-vn/story-domain";
 import type { StoryWorkflowSnapshot } from "@local-vn/story-domain";
 import {
+  listStoryManifests,
   loadStoryBundle,
   persistenceApi,
   saveStoryBundle
@@ -28,20 +30,23 @@ import {
 
 import { backendClientOrThrow } from "./useBackendClientStore";
 import { useBackendConfigStore } from "./useBackendConfigStore";
+import { useFrontendPreferencesStore } from "./useFrontendPreferencesStore";
 import { useLayoutStore } from "./useLayoutStore";
 
 export type StorySessionState = StorySessionStoreState;
 
 const storyPersistence: StoryPersistencePort = {
   loadStory: (storyId) => loadStoryBundle(persistenceApi(), storyId),
-  saveStory: (bundle) => saveStoryBundle(persistenceApi(), bundle)
+  saveStory: (bundle) => saveStoryBundle(persistenceApi(), bundle),
+  listStories: () => listStoryManifests(persistenceApi())
 };
 
-const storyBackend: StoryGenerationBackend & StoryModelLoadingBackend = {
-  generateLlm: (request) => backendClientOrThrow().generateLlm(request),
-  generateDanbotTags: (request) =>
-    backendClientOrThrow().generateDanbotTags(request),
-  generateImage: (request) => backendClientOrThrow().generateImage(request),
+const storyBackend: StoryGenerationBackend & StoryModelLoadingBackend & StoryRuntimeControlBackend = {
+  generateLlm: (request, options) => backendClientOrThrow().generateLlm(request, options),
+  generateDanbotTags: (request, options) =>
+    backendClientOrThrow().generateDanbotTags(request, options),
+  generateImage: (request, options) =>
+    backendClientOrThrow().generateImage(request, options),
   resolveAssets: (request) => backendClientOrThrow().resolveAssets(request),
   getRuntimeStatus: () => backendClientOrThrow().runtimeStatus(),
   loadLlmModel: async (request) => {
@@ -52,6 +57,9 @@ const storyBackend: StoryGenerationBackend & StoryModelLoadingBackend = {
   },
   loadDanbotModel: async (request) => {
     await backendClientOrThrow().loadDanbot(request);
+  },
+  cancelAll: async () => {
+    await backendClientOrThrow().cancel();
   }
 };
 
@@ -59,6 +67,10 @@ export const storySessionController = new StorySessionController({
   services: {
     persistence: storyPersistence,
     backend: storyBackend,
+    userInputPolicy: {
+      shouldAutoGenerateUserText: () =>
+        useFrontendPreferencesStore.getState().generateUserAnswerFromLlm
+    },
     autosave: true
   },
   initialState: {
@@ -73,8 +85,8 @@ export const useStorySessionStore = create<StorySessionState>(() =>
 storySessionController.subscribe((state) => {
   useStorySessionStore.setState(state);
 
-  if (state.storyId && useLayoutStore.getState().selectedStoryId !== state.storyId) {
-    useLayoutStore.getState().patch({ selectedStoryId: state.storyId });
+  if (state.storyId && useLayoutStore.getState().lastOpenedStoryId !== state.storyId) {
+    useLayoutStore.getState().patch({ lastOpenedStoryId: state.storyId });
   }
 });
 

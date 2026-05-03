@@ -31,7 +31,7 @@ def _frontend_command() -> list[str]:
         "--story-root={story_root}",
         "--output-root={output_root}",
     ]
-    script = "product-test:frontend" if FRONTEND_MODE in {"product-test", "test", "smoke-test"} else "electron:start"
+    script = "product-test:frontend" if FRONTEND_MODE in {"product-test", "test", "smoke-test"} else "electron:auto"
     return ["npm", "run", script, "--", *launcher_args]
 
 

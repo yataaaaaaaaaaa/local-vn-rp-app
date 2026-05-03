@@ -5,8 +5,7 @@ import {
 import type { FilePersistenceApi } from "@local-vn/config";
 import {
   storyFile,
-  storyNodeFile,
-  storyNodesDirectory,
+  storyRoot,
   storyStateFile,
   storyTreeFile
 } from "@local-vn/config";
@@ -15,7 +14,6 @@ import type {
   StoryManifest,
   StoryTreeBundle
 } from "@local-vn/story-domain";
-import { resolveStoryNodeFields } from "@local-vn/story-domain";
 
 export type { StoryTreeBundle } from "@local-vn/story-domain";
 
@@ -62,17 +60,36 @@ export async function loadStoryBundle(
   };
 }
 
+export async function listStoryManifests(
+  api: FilePersistenceApi
+): Promise<StoryManifest[]> {
+  const storyIds = await api.listDirectories(storyRoot());
+  const manifests = await Promise.all(
+    storyIds.map(async (storyId) => {
+      try {
+        const manifest = await api.readJson<StoryManifest | null>(
+          storyFile(storyId),
+          null
+        );
+        return isStoryManifest(manifest) ? manifest : null;
+      } catch {
+        return null;
+      }
+    })
+  );
+
+  return manifests
+    .filter((manifest): manifest is StoryManifest => Boolean(manifest))
+    .sort((left, right) => right.updated_at.localeCompare(left.updated_at));
+}
+
 export async function saveStoryBundle(
   api: FilePersistenceApi,
   bundle: StoryTreeBundle
 ): Promise<void> {
   const storyId = bundle.manifest.story_id;
-  const updatedManifest: StoryManifest = {
-    ...bundle.manifest,
-    updated_at: new Date().toISOString()
-  };
 
-  await api.writeJson(storyFile(storyId), updatedManifest);
+  await api.writeJson(storyFile(storyId), bundle.manifest);
   await api.writeJson(storyTreeFile(storyId), serializeTextTree(bundle.tree));
   await api.writeJson(storyStateFile(storyId), {
     selected_story_id: storyId,
@@ -83,10 +100,19 @@ export async function saveStoryBundle(
     workflow_by_node_id: bundle.workflowByNodeId ?? {},
     active_workflow_step_id: bundle.activeWorkflowStepId
   });
+}
 
-  await api.ensureDir(storyNodesDirectory(storyId));
-  await api.writeJson(
-    storyNodeFile(storyId, bundle.selectedNodeId),
-    resolveStoryNodeFields(bundle.tree, bundle.selectedNodeId)
+function isStoryManifest(value: unknown): value is StoryManifest {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<StoryManifest>;
+  return (
+    typeof candidate.story_id === "string" &&
+    typeof candidate.title === "string" &&
+    typeof candidate.created_at === "string" &&
+    typeof candidate.updated_at === "string" &&
+    typeof candidate.root_node_id === "string"
   );
 }

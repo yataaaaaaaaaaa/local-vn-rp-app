@@ -24,15 +24,15 @@ export async function bootstrapFrontend(): Promise<void> {
   useBackendClientStore.getState().setBaseUrl(config.backend.baseUrl);
   void useBackendClientStore.getState().refreshStatus();
 
-  const selectedStoryId = useLayoutStore.getState().selectedStoryId;
-  const loaded = selectedStoryId
-    ? await useStorySessionStore.getState().loadStory(selectedStoryId).then(
-        () => true,
-        () => false
-      )
-    : false;
+  const lastOpenedStoryId = useLayoutStore.getState().lastOpenedStoryId;
+  let restored = false;
 
-  if (!loaded) {
+  if (lastOpenedStoryId) {
+    await useStorySessionStore.getState().loadStory(lastOpenedStoryId);
+    restored = useStorySessionStore.getState().storyId === lastOpenedStoryId;
+  }
+
+  if (!restored) {
     await useStorySessionStore.getState().createStory("Default Story");
   }
 

@@ -15,6 +15,7 @@ declare global {
       exists(path: string): Promise<boolean>;
       remove(path: string): Promise<void>;
       ensureDir(path: string): Promise<void>;
+      listDirectories(path: string): Promise<string[]>;
       showItem(path: string): Promise<void>;
     };
     nativeDialogs: {

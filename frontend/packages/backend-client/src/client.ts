@@ -17,6 +17,7 @@ import type {
 export interface BackendClientOptions { baseUrl: string; }
 export type ProgressTransport = "sse" | "websocket";
 export interface ProgressConnection { close(): void; }
+export interface BackendRequestOptions { signal?: AbortSignal; }
 
 export class BackendClient {
   private readonly baseUrl: string;
@@ -31,13 +32,13 @@ export class BackendClient {
   public shutdown(): Promise<{ shutting_down: boolean }> { return this.postJson("/runtime/shutdown", {}); }
   public loadLlm(request: LlmLoadRequest): Promise<RuntimeStatus> { return this.postJson("/llm/load", request); }
   public unloadLlm(): Promise<RuntimeStatus> { return this.postJson("/llm/unload", {}); }
-  public generateLlm(request: LlmGenerateRequest): Promise<LlmGenerateResponse> { return this.postJson("/llm/generate", request); }
+  public generateLlm(request: LlmGenerateRequest, options: BackendRequestOptions = {}): Promise<LlmGenerateResponse> { return this.postJson("/llm/generate", request, options); }
   public loadImageModel(request: ImageModelLoadRequest): Promise<RuntimeStatus> { return this.postJson("/image-model/load", request); }
   public unloadImageModel(): Promise<RuntimeStatus> { return this.postJson("/image-model/unload", {}); }
-  public generateImage(request: ImageGenerateRequest): Promise<ImageGenerateResponse> { return this.postJson("/image/generate", request); }
+  public generateImage(request: ImageGenerateRequest, options: BackendRequestOptions = {}): Promise<ImageGenerateResponse> { return this.postJson("/image/generate", request, options); }
   public loadDanbot(request: DanbotLoadRequest): Promise<RuntimeStatus> { return this.postJson("/danbot/load", request); }
   public unloadDanbot(): Promise<RuntimeStatus> { return this.postJson("/danbot/unload", {}); }
-  public generateDanbotTags(request: DanbotGenerateRequest): Promise<DanbotGenerateResponse> { return this.postJson("/danbot/generate-tags", request); }
+  public generateDanbotTags(request: DanbotGenerateRequest, options: BackendRequestOptions = {}): Promise<DanbotGenerateResponse> { return this.postJson("/danbot/generate-tags", request, options); }
   public resolveAssets(request: AssetResolveRequest): Promise<AssetResolveResponse> { return this.postJson("/assets/resolve", request); }
 
   public connectProgress(onEvent: (event: ProgressEvent) => void, transport: ProgressTransport = "sse"): ProgressConnection {
@@ -51,15 +52,18 @@ export class BackendClient {
     return source;
   }
 
-  private async getJson<T>(path: string): Promise<T> {
-    return parseJsonResponse<T>(await fetch(`${this.baseUrl}${path}`));
+  private async getJson<T>(path: string, options: BackendRequestOptions = {}): Promise<T> {
+    return parseJsonResponse<T>(await fetch(`${this.baseUrl}${path}`, {
+      signal: options.signal
+    }));
   }
 
-  private async postJson<T>(path: string, body: unknown): Promise<T> {
+  private async postJson<T>(path: string, body: unknown, options: BackendRequestOptions = {}): Promise<T> {
     return parseJsonResponse<T>(await fetch(`${this.baseUrl}${path}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
+      signal: options.signal
     }));
   }
 }

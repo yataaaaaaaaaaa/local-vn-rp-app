@@ -28,9 +28,6 @@ export function VisualNovelStage() {
   const submitUserTextToStory = useStorySessionStore(
     (state) => state.submitUserText
   );
-  const createChildFromCurrent = useStorySessionStore(
-    (state) => state.createChildFromCurrent
-  );
   const storyBusy = useStorySessionStore((state) => state.busy);
   const runningJob = useStorySessionStore((state) => state.runningJob);
   const selectedNodeId = useStorySessionStore((state) => state.selectedNodeId);
@@ -107,11 +104,7 @@ export function VisualNovelStage() {
       return;
     }
 
-    if (generateUserAnswerFromLlm) {
-      await submitUserTextToStory(text);
-    } else {
-      await createChildFromCurrent(text);
-    }
+    await submitUserTextToStory(text);
 
     setUserText("");
   }
@@ -173,7 +166,7 @@ export function VisualNovelStage() {
         <div className="vn-actions vn-input-actions">
           <label
             className="vn-auto-generate-toggle"
-            title="Continue the workflow with the LLM after adding this user text"
+            title="When the workflow reaches player text, let the LLM generate it instead of pausing for manual input"
           >
             <input
               type="checkbox"
@@ -189,11 +182,7 @@ export function VisualNovelStage() {
             disabled={storyBusy || !userText.trim()}
             onClick={() => void submitUserText()}
           >
-            {storyBusy
-              ? "Streaming..."
-              : generateUserAnswerFromLlm
-                ? "Send + Generate"
-                : "Add Text"}
+            {storyBusy ? "Streaming..." : "Send"}
           </button>
         </div>
       </div>

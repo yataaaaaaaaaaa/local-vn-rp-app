@@ -49,6 +49,7 @@ export type StorySessionListener = (state: StorySessionState) => void;
 export interface StorySessionActions {
   createStory(title: string): Promise<void>;
   loadStory(storyId: string): Promise<void>;
+  renameStory(title: string): Promise<void>;
   saveStory(): Promise<void>;
 
   selectNode(nodeId: string): void;
@@ -87,8 +88,8 @@ export interface StorySessionActions {
     prompt: string;
   }): Promise<void>;
 
-  cancelAll(): void;
-  cancelNode(nodeId: string): void;
+  cancelAll(): Promise<void>;
+  cancelNode(nodeId: string): Promise<void>;
 
   setBackendConfig(config: BackendRuntimeConfig | null): void;
   setMessage(message: string | null): void;

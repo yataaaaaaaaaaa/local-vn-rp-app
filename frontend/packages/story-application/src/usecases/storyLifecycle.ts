@@ -121,7 +121,10 @@ export async function saveStory(
   }
 
   const bundle: StoryTreeBundle = {
-    manifest: input.state.manifest,
+    manifest: {
+      ...input.state.manifest,
+      updated_at: new Date().toISOString()
+    },
     tree: input.state.tree,
     selectedNodeId:
       input.state.selectedNodeId ?? input.state.manifest.root_node_id,

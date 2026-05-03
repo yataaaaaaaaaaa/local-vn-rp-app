@@ -3,11 +3,11 @@ import { frontendLayoutFile } from "@local-vn/config";
 import { persistenceApi } from "@local-vn/story-infrastructure";
 
 interface PersistedLayoutSnapshot {
-  selectedStoryId?: string;
+  lastOpenedStoryId?: string | null;
 }
 
 interface LayoutSnapshot {
-  selectedStoryId: string;
+  lastOpenedStoryId: string | null;
 }
 
 interface LayoutState extends LayoutSnapshot {
@@ -17,20 +17,24 @@ interface LayoutState extends LayoutSnapshot {
 }
 
 const defaults: LayoutSnapshot = {
-  selectedStoryId: "default_story"
+  lastOpenedStoryId: null
 };
 
 export const useLayoutStore = create<LayoutState>((set, get) => ({
   ...defaults,
   load: async () => {
-    const loaded = await persistenceApi().readJson<PersistedLayoutSnapshot>(frontendLayoutFile(), defaults);
+    const loaded = await persistenceApi().readJson<PersistedLayoutSnapshot>(
+      frontendLayoutFile(),
+      defaults
+    );
     set({
-      selectedStoryId: loaded.selectedStoryId ?? defaults.selectedStoryId
+      lastOpenedStoryId:
+        loaded.lastOpenedStoryId ?? defaults.lastOpenedStoryId
     });
   },
   save: async () => {
-    const { selectedStoryId } = get();
-    await persistenceApi().writeJson(frontendLayoutFile(), { selectedStoryId });
+    const { lastOpenedStoryId } = get();
+    await persistenceApi().writeJson(frontendLayoutFile(), { lastOpenedStoryId });
   },
   patch: (patch) => {
     set(patch);

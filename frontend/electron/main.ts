@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, OpenDialogOptions, shell } from "electron";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, normalize, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
@@ -114,6 +114,15 @@ function registerPersistenceIpc(): void {
   ipcMain.handle("persistence:ensureDir", async (_event, path: string) => {
     await mkdir(assertStoragePath(path), { recursive: true });
   });
+  ipcMain.handle("persistence:listDirectories", async (_event, path: string) => {
+    try {
+      const entries = await readdir(assertStoragePath(path), { withFileTypes: true });
+      return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+    } catch (error) {
+      if (isMissingFileError(error)) return [];
+      throw error;
+    }
+  });
   ipcMain.handle("shell:showItem", async (_event, path: string) => {
     shell.showItemInFolder(assertStoragePath(path));
   });
@@ -168,13 +177,18 @@ async function createWindow(): Promise<void> {
       sandbox: false
     }
   });
-  win.webContents.openDevTools({ mode: "detach" });
+  const shouldOpenDevTools = process.env.LOCAL_VN_RP_OPEN_DEVTOOLS === "1";
 
   if (isDev && process.env.VITE_DEV_SERVER_URL) {
     await win.loadURL(process.env.VITE_DEV_SERVER_URL);
-    win.webContents.openDevTools({ mode: "detach" });
+    if (shouldOpenDevTools) {
+      win.webContents.openDevTools({ mode: "detach" });
+    }
   } else {
     await win.loadFile(join(currentDir, "../dist/index.html"));
+    if (shouldOpenDevTools) {
+      win.webContents.openDevTools({ mode: "detach" });
+    }
   }
 }
 

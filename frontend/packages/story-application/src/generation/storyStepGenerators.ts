@@ -35,6 +35,7 @@ export interface StoryStepGenerationContext {
   selectedNodeId: string | null;
   outputImageFile?: (storyId: string, imageId: string) => string;
   now?: () => Date;
+  abortSignal?: AbortSignal;
 }
 
 export type StoryWorkflowStep = WorkflowStepDefinition<
@@ -117,7 +118,8 @@ export async function generateUserTextStep(input: {
         max_tokens: Math.min(input.context.config.llm.max_tokens, 40),
         stop: RP_DIALOGUE_STOP
       }
-    )
+    ),
+    { signal: input.context.abortSignal }
   );
 
   return {
@@ -143,7 +145,8 @@ export async function generateDialogueStep(input: {
         max_tokens: Math.min(input.context.config.llm.max_tokens, 64),
         stop: RP_DIALOGUE_STOP
       }
-    )
+    ),
+    { signal: input.context.abortSignal }
   );
 
   return {
@@ -168,7 +171,8 @@ export async function generateVisualDescriptionStep(input: {
       {
         max_tokens: Math.min(input.context.config.llm.max_tokens, 96)
       }
-    )
+    ),
+    { signal: input.context.abortSignal }
   );
 
   const text = cleanVisualDescriptionOutput(result.text);
@@ -208,14 +212,17 @@ export async function generateDanbotStep(input: {
   document: StoryNodeFields;
   context: StoryStepGenerationContext;
 }): Promise<WorkflowGenerationResult<StoryWorkflowPayload>> {
-  const result = await input.context.backend.generateDanbotTags({
-    scene_text:
-      input.document.visualDescription ||
-      input.document.dialogue ||
-      input.document.context,
-    max_tags: input.context.config.danbot.max_tags,
-    model_path: input.context.config.danbot.model_path || undefined
-  });
+  const result = await input.context.backend.generateDanbotTags(
+    {
+      scene_text:
+        input.document.visualDescription ||
+        input.document.dialogue ||
+        input.document.context,
+      max_tags: input.context.config.danbot.max_tags,
+      model_path: input.context.config.danbot.model_path || undefined
+    },
+    { signal: input.context.abortSignal }
+  );
 
   return {
     value: {
@@ -269,7 +276,8 @@ export async function generateImageStep(input: {
       imageId,
       outputPath,
       seed: now.getTime() % 2147483647
-    })
+    }),
+    { signal: input.context.abortSignal }
   );
 
   return {
