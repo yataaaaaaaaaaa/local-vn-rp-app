@@ -23,10 +23,10 @@ export function VisualNovelStage() {
   const activeDialogueStream = runningJob?.stepId === "dialogue" ? streamedDialogue : "";
   const imageIsGenerating = storyBusy && runningJob?.stepId === "image" && !image;
 
-  async function submitUserText(generateDialogue: boolean) {
+  async function submitUserText() {
     const text = userText.trim();
     if (!text) return;
-    await submitUserTextToStory(text, generateDialogue);
+    await submitUserTextToStory(text);
     setUserText("");
   }
 
@@ -59,8 +59,7 @@ export function VisualNovelStage() {
           <textarea value={userText} onChange={(event) => setUserText(event.target.value)} placeholder="Describe the player action or spoken line..." />
         </label>
         <div className="vn-actions">
-          <button disabled={storyBusy || !userText.trim()} onClick={() => void submitUserText(false)}>Send user text</button>
-          <button disabled={storyBusy || !userText.trim()} onClick={() => void submitUserText(true)}>{storyBusy ? "Streaming..." : "Send and generate dialogue"}</button>
+          <button disabled={storyBusy || !userText.trim()} onClick={() => void submitUserText()}>{storyBusy ? "Streaming..." : "Send"}</button>
         </div>
       </div>
     </section>

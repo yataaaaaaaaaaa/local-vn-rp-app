@@ -27,6 +27,7 @@ import {
 import {
   addStoryChildNode,
   createStoryTreeBundle,
+  deleteStorySubtree,
   editStoryNodeFields,
   loadStoryBundle,
   parseImageRef,
@@ -77,10 +78,11 @@ interface StorySessionState {
   goBack(): void;
   goForward(): void;
 
-  createChildFromCurrent(initialFields?: Partial<StoryNodeFields>, continueFromStepId?: StoryWorkflowStepId): string;
+  createChildFromCurrent(initialFields?: Partial<StoryNodeFields>, continueFromStepId?: StoryWorkflowStepId, options?: { autoContinue?: boolean }): string;
   submitUserText(text: string, generateDialogue?: boolean): Promise<void>;
   createAlternateBranch(initialFields?: Partial<StoryNodeFields>): string | null;
   duplicateCurrentBranch(): string | null;
+  deleteNode(nodeId: string): void;
   deleteCurrentLeaf(): void;
 
   setAutoValidateGeneratedCandidate(stepId: StoryWorkflowStepId, enabled: boolean): void;
@@ -239,7 +241,7 @@ export const useStorySessionStore = create<StorySessionState>((set, get) => ({
     void get().saveStory();
   },
 
-  createChildFromCurrent: (initialFields = {}, continueFromStepId = "context") => {
+  createChildFromCurrent: (initialFields = {}, continueFromStepId = "context", options = {}) => {
     const state = get();
     if (!state.tree || !state.selectedNodeId) throw new Error("No selected story node.");
     const current = selectResolvedCurrent(state);
@@ -263,19 +265,19 @@ export const useStorySessionStore = create<StorySessionState>((set, get) => ({
       message: null
     }));
     void get().saveStory();
-    void get().continueFrom(continueFromStepId);
+    if (options.autoContinue ?? true) void get().continueFrom(continueFromStepId);
     return added.nodeId;
   },
 
-  submitUserText: async (text, generateDialogue = false) => {
+  submitUserText: async (text, generateDialogue = true) => {
     const userText = text.trim();
     if (!userText) return;
 
     const state = get();
-    const stepId = generateDialogue ? "dialogue" : "userText";
     if (state.activeStepId !== "userText" || !state.tree || !state.selectedNodeId) {
-      state.createChildFromCurrent({ userText }, stepId);
+      state.createChildFromCurrent({ userText }, "userText", { autoContinue: false });
       if (generateDialogue) await get().regenerateStep("dialogue");
+      else await get().continueFrom("dialogue");
       return;
     }
 
@@ -312,8 +314,42 @@ export const useStorySessionStore = create<StorySessionState>((set, get) => ({
     return state.createAlternateBranch(selectResolvedCurrent(state));
   },
 
+  deleteNode: (nodeId) => {
+    const state = get();
+    if (!state.tree || !state.selectedNodeId) return;
+    try {
+      const deleted = deleteStorySubtree(state.tree, nodeId);
+      const deletedIds = new Set(deleted.deletedNodeIds);
+      const workflowByNodeId = Object.fromEntries(
+        Object.entries(state.workflowByNodeId).filter(([candidateId]) => !deletedIds.has(candidateId))
+      ) as StoryWorkflowByNodeId;
+      const imageRefs = Object.fromEntries(
+        Object.entries(state.imageRefs).filter(([candidateId]) => !deletedIds.has(candidateId))
+      ) as Record<string, ImageRef>;
+      const selectedNodeId = deletedIds.has(state.selectedNodeId) ? deleted.parentId : state.selectedNodeId;
+      const nextWorkflowByNodeId = ensureWorkflowRecord(workflowByNodeId, selectedNodeId);
+      const activeStepId = nextWorkflowByNodeId[selectedNodeId]?.activeStepId ?? "context";
+
+      set({
+        tree: deleted.tree,
+        selectedNodeId,
+        imageRefs,
+        historyBack: state.historyBack.filter((candidateId) => !deletedIds.has(candidateId)),
+        historyForward: state.historyForward.filter((candidateId) => !deletedIds.has(candidateId)),
+        workflowByNodeId: nextWorkflowByNodeId,
+        activeStepId,
+        dirty: true,
+        message: deleted.deletedNodeIds.length > 1 ? "Scene branch deleted." : "Scene deleted."
+      });
+      void get().saveStory();
+    } catch (error) {
+      set({ message: error instanceof Error ? error.message : String(error) });
+    }
+  },
+
   deleteCurrentLeaf: () => {
-    console.warn("Delete leaf is intentionally not implemented until replayable-text-tree exposes a delete API.");
+    const selectedNodeId = get().selectedNodeId;
+    if (selectedNodeId) get().deleteNode(selectedNodeId);
   },
 
   setAutoValidateGeneratedCandidate: (stepId, enabled) => {

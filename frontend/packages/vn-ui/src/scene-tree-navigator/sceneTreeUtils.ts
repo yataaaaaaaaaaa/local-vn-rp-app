@@ -78,8 +78,9 @@ export function buildVisibleSceneGraph(params: {
   tree: SceneTreeInputNode[];
   collapsedNodeIds: Set<string>;
   toggleCollapsed: (sceneId: string) => void;
+  deleteNode: (sceneId: string) => void;
 }): SceneTreeGraph {
-  const { tree, collapsedNodeIds, toggleCollapsed } = params;
+  const { tree, collapsedNodeIds, toggleCollapsed, deleteNode } = params;
   const nodesById = flattenSceneTree(tree);
   const hiddenNodeIds = collectHiddenNodeIds(collapsedNodeIds, nodesById);
   const visibleNodes: SceneTreeReactNode[] = [];
@@ -102,7 +103,9 @@ export function buildVisibleSceneGraph(params: {
         collapsed,
         hiddenDescendantCount: collapsed ? countDescendants(sceneNode.id, nodesById) : 0,
         isCurrent: false,
+        canDelete: sceneNode.parentId !== undefined,
         toggleCollapsed,
+        deleteNode,
       },
     });
 

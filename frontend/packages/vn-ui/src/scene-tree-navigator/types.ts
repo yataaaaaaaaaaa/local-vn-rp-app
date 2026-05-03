@@ -15,7 +15,9 @@ export type SceneTreeNodeData = Record<string, unknown> & {
   collapsed: boolean;
   hiddenDescendantCount: number;
   isCurrent: boolean;
+  canDelete: boolean;
   toggleCollapsed: (sceneId: string) => void;
+  deleteNode: (sceneId: string) => void;
 };
 
 export type SceneTreeReactNode = Node<SceneTreeNodeData, "sceneTreeNode">;

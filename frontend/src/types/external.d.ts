@@ -7,6 +7,7 @@ declare module "@replayable-text-tree/core" {
   export function resolveField(tree: TextTree, nodeId: string, field: string): string;
   export function resolveNode(tree: TextTree, nodeId: string): { id?: string; fields: Record<string, string> };
   export function editNodeField(tree: TextTree, nodeId: string, field: string, value: string): TextTree;
+  export function validateTextTree(tree: TextTree): void;
   export function createTreeCursor(tree: TextTree): TextTreeCursor;
   export function getCurrentNode(tree: TextTree, cursor: TextTreeCursor): { id?: string; fields: Record<string, string> };
   export function goToChild(tree: TextTree, cursor: TextTreeCursor, childId: string): TextTreeCursor;
@@ -20,7 +21,17 @@ declare module "@replayable-text-tree/core" {
 declare module "danbooru-tag-resolver" {
   import type { ComponentType } from "react";
   export type DanbooruResolverConfig = { schemaVersion: number; categories: unknown[]; [key: string]: unknown };
-  export interface DanbooruTagResult { tags: string[]; prompt?: string; warnings?: string[] }
+  export interface DanbooruTagMatch {
+    categoryId: string;
+    categoryName: string;
+    entryId: string;
+    entryName: string;
+    matchedPhrases: string[];
+    selectedVariantId: string | null;
+    selectedVariantName: string | null;
+    selectedTags: string[];
+  }
+  export interface DanbooruTagResult { tags: string[]; prompt?: string; warnings?: { message?: string }[] | string[]; matches?: DanbooruTagMatch[] }
   export function extractDanbooruTags(config: DanbooruResolverConfig, rawText: string, seed: number): DanbooruTagResult;
   export const DanbooruTagResolver: {
     create(): { toJSON(): DanbooruResolverConfig; extractTags(text: string, seed: number): DanbooruTagResult };

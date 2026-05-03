@@ -17,7 +17,7 @@ export function TreeCommandPalette() {
   const createChildFromCurrent = useStorySessionStore((state) => state.createChildFromCurrent);
   const createAlternateBranch = useStorySessionStore((state) => state.createAlternateBranch);
   const duplicateCurrentBranch = useStorySessionStore((state) => state.duplicateCurrentBranch);
-  const deleteCurrentLeaf = useStorySessionStore((state) => state.deleteCurrentLeaf);
+  const deleteCurrentNode = useStorySessionStore((state) => state.deleteCurrentLeaf);
   const applyPresetContext = useStorySessionStore((state) => state.applyPresetContext);
   const [message, setMessage] = useState<string | null>(null);
   const [presetId, setPresetId] = useState(STORY_CHARACTER_PRESETS[0]?.id ?? "");
@@ -81,7 +81,7 @@ export function TreeCommandPalette() {
         <button onClick={() => run("Create child", () => { createChildFromCurrent({}, "context"); })}>Create child from current node</button>
         <button onClick={() => run("Alternate branch", () => { createAlternateBranch(); })}>Create alternate branch</button>
         <button onClick={() => run("Duplicate branch", () => { duplicateCurrentBranch(); })}>Duplicate current branch</button>
-        <button onClick={() => run("Delete leaf", deleteCurrentLeaf)}>Delete current leaf</button>
+        <button onClick={() => run("Delete scene", deleteCurrentNode)}>Delete current scene</button>
         <button disabled={!image} onClick={() => image && window.appPersistence.showItem(image.image_path)}>Set/open current node image</button>
         <button disabled={!image?.metadata_path} onClick={() => image?.metadata_path && window.appPersistence.showItem(image.metadata_path)}>Open current image metadata</button>
       </div>

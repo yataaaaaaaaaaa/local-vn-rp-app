@@ -31,6 +31,7 @@ export type SceneTreeNavigatorProps = {
   tree: SceneTreeInputNode[];
   currentSceneId?: string | null;
   onTeleportToScene: (sceneId: string) => void;
+  onDeleteScene?: (sceneId: string) => void;
   height?: number | string;
   className?: string;
 };
@@ -47,6 +48,7 @@ function SceneTreeNavigatorInner({
   tree,
   currentSceneId,
   onTeleportToScene,
+  onDeleteScene,
   height = 260,
   className,
 }: SceneTreeNavigatorProps) {
@@ -65,13 +67,18 @@ function SceneTreeNavigatorInner({
     });
   }, []);
 
+  const deleteNode = useCallback((sceneId: string) => {
+    onDeleteScene?.(sceneId);
+  }, [onDeleteScene]);
+
   const visibleGraph = useMemo(() => {
     return buildVisibleSceneGraph({
       tree,
       collapsedNodeIds,
       toggleCollapsed,
+      deleteNode,
     });
-  }, [tree, collapsedNodeIds, toggleCollapsed]);
+  }, [tree, collapsedNodeIds, toggleCollapsed, deleteNode]);
 
   useEffect(() => {
     let cancelled = false;

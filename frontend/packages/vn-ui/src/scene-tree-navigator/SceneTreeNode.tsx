@@ -32,6 +32,20 @@ export function SceneTreeNode({ data }: NodeProps<SceneTreeReactNode>) {
             {data.hiddenDescendantCount}
           </span>
         ) : null}
+
+        {data.canDelete ? (
+          <button
+            type="button"
+            className="scene-tree-delete-button nodrag nopan"
+            title={hasChildren ? "Delete branch" : "Delete scene"}
+            onClick={(event) => {
+              event.stopPropagation();
+              data.deleteNode(data.sceneId);
+            }}
+          >
+            X
+          </button>
+        ) : null}
       </div>
 
       <Handle type="source" position={Position.Right} />

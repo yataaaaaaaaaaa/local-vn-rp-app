@@ -9,6 +9,7 @@ export function StoryTreeSceneNavigator() {
   const selectedNodeId = useStorySessionStore((state) => state.selectedNodeId);
   const imageRefs = useStorySessionStore((state) => state.imageRefs);
   const selectNode = useStorySessionStore((state) => state.selectNode);
+  const deleteNode = useStorySessionStore((state) => state.deleteNode);
 
   const sceneTree = useMemo(
     () => storyTextTreeToSceneTree({
@@ -29,6 +30,7 @@ export function StoryTreeSceneNavigator() {
       tree={sceneTree}
       currentSceneId={selectedNodeId}
       onTeleportToScene={selectNode}
+      onDeleteScene={deleteNode}
       height={280}
     />
   );

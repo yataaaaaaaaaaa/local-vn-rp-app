@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { extractDanbooruTags, type DanbooruResolverConfig } from "danbooru-tag-resolver";
+import { extractDanbooruTags, type DanbooruResolverConfig, type DanbooruTagMatch } from "danbooru-tag-resolver";
 import { resolverConfigFile } from "@local-vn/config";
 import { persistenceApi } from "./persistenceBridge";
 
@@ -7,6 +7,7 @@ interface ResolverResult {
   tags: string[];
   prompt: string;
   warnings: string[];
+  matches: DanbooruTagMatch[];
 }
 
 interface ResolverState {
@@ -25,7 +26,7 @@ interface ResolverState {
 }
 
 const emptyConfig: DanbooruResolverConfig = { schemaVersion: 1, categories: [] };
-const emptyResult: ResolverResult = { tags: [], prompt: "", warnings: [] };
+const emptyResult: ResolverResult = { tags: [], prompt: "", warnings: [], matches: [] };
 
 export const useResolverStore = create<ResolverState>((set, get) => ({
   config: emptyConfig,
@@ -53,7 +54,8 @@ export const useResolverStore = create<ResolverState>((set, get) => ({
     const result = {
       tags: extracted.tags ?? [],
       prompt: extracted.prompt ?? (extracted.tags ?? []).join(", "),
-      warnings: extracted.warnings ?? []
+      warnings: (extracted.warnings ?? []).map((warning) => typeof warning === "string" ? warning : warning.message ?? String(warning)),
+      matches: extracted.matches ?? []
     };
     set({ result });
     return result;

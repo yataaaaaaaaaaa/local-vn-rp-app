@@ -1,4 +1,4 @@
-import { addChildNode, createTextTree, editNodeField, parseTextTree, resolveNode, serializeTextTree } from "@replayable-text-tree/core";
+import { addChildNode, createTextTree, editNodeField, parseTextTree, resolveNode, serializeTextTree, validateTextTree } from "@replayable-text-tree/core";
 import type { TextTree } from "@replayable-text-tree/core";
 import type { FilePersistenceApi } from "@local-vn/config";
 import { storyFile, storyNodeFile, storyNodesDirectory, storyStateFile, storyTreeFile } from "@local-vn/config";
@@ -78,9 +78,49 @@ export function addStoryChildNode(tree: TextTree, parentId: string, initialField
   return addChildNode(tree, parentId, createEmptyStoryNodeFields(initialFields) as unknown as Record<string, string>, options);
 }
 
+export function deleteStorySubtree(tree: TextTree, nodeId: string): { tree: TextTree; parentId: string; deletedNodeIds: string[] } {
+  const sourceTree = tree as TextTreeWithNodes;
+  const sourceNode = sourceTree.nodes?.[nodeId];
+  if (!sourceNode) throw new Error(`Story node does not exist: ${nodeId}`);
+  if (nodeId === sourceTree.rootId) throw new Error("The root scene cannot be deleted.");
+  if (!sourceNode.parentId) throw new Error(`Story node has no parent: ${nodeId}`);
+
+  const nextTree = JSON.parse(JSON.stringify(tree)) as TextTreeWithNodes;
+  const deletedNodeIds: string[] = [];
+
+  function collectDeleted(currentNodeId: string) {
+    const currentNode = nextTree.nodes[currentNodeId];
+    if (!currentNode) return;
+    deletedNodeIds.push(currentNodeId);
+    for (const childId of currentNode.childIds) collectDeleted(childId);
+  }
+
+  collectDeleted(nodeId);
+
+  const parentId = sourceNode.parentId;
+  const parent = nextTree.nodes[parentId];
+  if (!parent) throw new Error(`Parent story node does not exist: ${parentId}`);
+
+  const now = new Date().toISOString();
+  parent.childIds = parent.childIds.filter((childId) => childId !== nodeId);
+  parent.updatedAt = now;
+
+  for (const deletedNodeId of deletedNodeIds) delete nextTree.nodes[deletedNodeId];
+  nextTree.updatedAt = now;
+  validateTextTree(nextTree);
+
+  return { tree: nextTree, parentId, deletedNodeIds };
+}
+
 export function attachImageRefToNode(tree: TextTree, nodeId: string, ref: ImageRef): TextTree {
   return editStoryNodeField(tree, nodeId, "imageRef", stringifyImageRef(ref));
 }
+
+type TextTreeWithNodes = TextTree & {
+  rootId: string;
+  updatedAt: string;
+  nodes: Record<string, { parentId: string | null; childIds: string[]; updatedAt: string }>;
+};
 
 export async function loadStoryBundle(api: FilePersistenceApi, storyId: string): Promise<StoryTreeBundle | null> {
   const manifest = await api.readJson<StoryManifest | null>(storyFile(storyId), null);
