@@ -15,12 +15,14 @@
   "dependencies": {
     "@replayable-text-tree/core": "file:D:/Anything/libs/replayable-text-tree",
     "@vitejs/plugin-react": "latest",
+    "@xyflow/react": "latest",
     "danbooru-tag-resolver": "file:D:/Anything/libs/danbooru-tag-resolver",
     "electron": "latest",
-    "vite": "latest",
+    "elkjs": "latest",
     "react": "latest",
     "react-dom": "latest",
     "typescript": "latest",
+    "vite": "latest",
     "zustand": "latest"
   },
   "devDependencies": {
