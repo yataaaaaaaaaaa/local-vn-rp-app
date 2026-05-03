@@ -4,7 +4,7 @@ import type { BackendRuntimeConfig } from "@local-vn/shared-types";
 import { launcherArgsOrThrow } from "./useLauncherStore";
 import { persistenceApi } from "@local-vn/story-infrastructure";
 
-type BackendConfigSection = "backend" | "llm" | "image" | "danbot";
+type BackendConfigSection = "backend" | "llm" | "image" | "prompts" | "danbot";
 
 interface BackendConfigState {
   config: BackendRuntimeConfig;

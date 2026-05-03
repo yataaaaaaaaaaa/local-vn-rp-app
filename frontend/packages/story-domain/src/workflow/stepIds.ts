@@ -9,7 +9,8 @@ export const storyWorkflowStepIds = [
   "selectedTags",
   "danbot",
   "prompt",
-  "image"
+  "image",
+  "nextScene"
 ] as const;
 
 export type StoryWorkflowStepId = (typeof storyWorkflowStepIds)[number];
@@ -29,7 +30,8 @@ export const defaultStoryWorkflowModes: StoryWorkflowModes = {
   selectedTags: "manual",
   danbot: "auto",
   prompt: "auto",
-  image: "manual"
+  image: "manual",
+  nextScene: "auto"
 };
 
 export const defaultStoryWorkflowAutoValidateGeneratedCandidate: StoryWorkflowAutoValidateByStepId = {
@@ -41,5 +43,6 @@ export const defaultStoryWorkflowAutoValidateGeneratedCandidate: StoryWorkflowAu
   selectedTags: true,
   danbot: true,
   prompt: true,
-  image: false
+  image: true,
+  nextScene: true
 };

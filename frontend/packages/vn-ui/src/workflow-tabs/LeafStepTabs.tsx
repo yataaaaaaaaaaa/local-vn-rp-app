@@ -69,6 +69,7 @@ export function LeafStepTabs() {
     activeStepId,
     stepState?.edited ?? stepState?.generated ?? null
   );
+  const activeStepFields = fieldsForStoryWorkflowStep(activeStepId);
   const isGenerating =
     runningJob?.nodeId === selectedNodeId && runningJob.stepId === activeStepId;
 
@@ -157,7 +158,13 @@ export function LeafStepTabs() {
         {message ? <div className="workflow-message">{message}</div> : null}
 
         <div className="workflow-fields">
-          {fieldsForStoryWorkflowStep(activeStepId).map((field) => (
+          {activeStepFields.length === 0 ? (
+            <div className="workflow-message">
+              {descriptionForFieldlessStep(activeStepId)}
+            </div>
+          ) : null}
+
+          {activeStepFields.map((field) => (
             <WorkflowField
               key={field}
               field={field}
@@ -190,4 +197,15 @@ function resolveStepPayload(
     ...readFields(fields, stepId),
     ...(workflowPayload ?? {})
   };
+}
+
+function descriptionForFieldlessStep(
+  stepId: StoryWorkflowStepId
+): string {
+  switch (stepId) {
+    case "nextScene":
+      return "Generate this step to create a child scene, select it, and carry the completed scene forward as context.";
+    default:
+      return "This workflow step does not edit scene fields directly.";
+  }
 }

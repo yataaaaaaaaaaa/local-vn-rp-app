@@ -228,6 +228,8 @@ export function fieldListForTab(tab: string): StoryNodeFieldKey[] {
       return ["positivePrompt", "negativePrompt"];
     case "Image":
       return ["imageRef"];
+    case "Go to Next Scene":
+      return [];
     default:
       return [...storyNodeFieldKeys];
   }

@@ -29,6 +29,8 @@ export function fieldsForStoryWorkflowStep(
       return ["positivePrompt", "negativePrompt"];
     case "image":
       return ["imageRef"];
+    case "nextScene":
+      return [];
   }
 }
 

@@ -7,6 +7,7 @@ import {
   selectCanEditStep,
   selectCanGenerateStep,
   selectCanValidateStep,
+  selectDisplayedImageRef,
   selectResolvedCurrent,
   type StoryGenerationBackend,
   type StoryModelLoadingBackend,
@@ -88,5 +89,6 @@ export {
   selectCanEditStep,
   selectCanGenerateStep,
   selectCanValidateStep,
+  selectDisplayedImageRef,
   selectResolvedCurrent
 };

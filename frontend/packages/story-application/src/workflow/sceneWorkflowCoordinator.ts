@@ -14,6 +14,7 @@ import {
 
 import type { StoryStepGenerationContext } from "../generation/storyStepGenerators";
 import { commitStep } from "../usecases/commitStep";
+import { completeSceneAndAdvance } from "../usecases/completeSceneAndAdvance";
 import { generateStepCandidate } from "../usecases/generateStepCandidate";
 import type {
   StorySessionPatch,
@@ -137,7 +138,19 @@ export class SceneWorkflowCoordinator {
     const nodeId = input.nodeId ?? state.selectedNodeId;
     const stepId = input.stepId ?? state.activeStepId;
 
-    if (!state.tree || !nodeId || !state.backendConfig) {
+    if (!state.tree || !nodeId) {
+      return;
+    }
+
+    if (stepId === "nextScene") {
+      await this.advanceToNextScene({
+        nodeId,
+        reason: input.reason
+      });
+      return;
+    }
+
+    if (!state.backendConfig) {
       return;
     }
 
@@ -287,6 +300,91 @@ export class SceneWorkflowCoordinator {
     }));
 
     void this.host.saveStory();
+  }
+
+  private async advanceToNextScene(input: {
+    nodeId: string;
+    reason?: StartSceneStepGenerationInput["reason"];
+  }): Promise<void> {
+    const state = this.host.getState();
+
+    if (!state.tree) {
+      return;
+    }
+
+    this.abortCurrentRun();
+
+    const run = this.createRun(input.nodeId, "nextScene");
+    this.currentRun = run;
+
+    this.host.setState({
+      busy: true,
+      activeStepId: "nextScene",
+      runningJob: toStorySessionRunningJob(run),
+      message: input.reason === "auto"
+        ? "Creating the next scene..."
+        : "Advancing to the next scene..."
+    });
+
+    try {
+      const currentState = this.host.getState();
+
+      if (!currentState.tree) {
+        return;
+      }
+
+      const fields = resolveStoryNodeFields(
+        currentState.tree,
+        input.nodeId
+      );
+      const committed = commitStep({
+        tree: currentState.tree,
+        workflowByNodeId: currentState.workflowByNodeId,
+        nodeId: input.nodeId,
+        fields,
+        stepId: "nextScene"
+      });
+      const advanced = completeSceneAndAdvance({
+        tree: committed.tree,
+        workflowByNodeId: committed.workflowByNodeId,
+        nodeId: input.nodeId,
+        currentFields: fields
+      });
+
+      if (!this.isCurrentRun(run)) {
+        return;
+      }
+
+      this.currentRun = null;
+
+      const nextWorkflow = advanced.workflowByNodeId[advanced.nextNodeId];
+
+      this.host.setState({
+        tree: advanced.tree,
+        workflowByNodeId: advanced.workflowByNodeId,
+        selectedNodeId: advanced.nextNodeId,
+        historyBack: [...currentState.historyBack, input.nodeId],
+        historyForward: [],
+        activeStepId: nextWorkflow?.activeStepId ?? "userText",
+        busy: false,
+        runningJob: null,
+        dirty: true,
+        message: "Next scene created. Add the player text to continue."
+      });
+
+      await this.host.saveStory();
+    } catch (error) {
+      if (!this.isCurrentRun(run)) {
+        return;
+      }
+
+      this.currentRun = null;
+      this.host.setState({
+        busy: false,
+        runningJob: null
+      });
+      this.host.handleError(error);
+    }
   }
 
   private createRun(

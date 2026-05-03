@@ -1,9 +1,12 @@
 import {
+  getParentId,
+  parseImageRef,
   resolveStoryNodeFields,
   selectCanEditStep as selectDomainCanEditStep,
   selectCanGenerateStep as selectDomainCanGenerateStep,
   selectCanValidateStep as selectDomainCanValidateStep,
   selectActiveWorkflowStep as selectDomainActiveWorkflowStep,
+  type ImageRef,
   type StoryNodeFields,
   type StoryWorkflowStepId
 } from "@local-vn/story-domain";
@@ -64,4 +67,92 @@ export function selectCanValidateStep(
     currentNodeId: state.selectedNodeId,
     stepId
   });
+}
+
+export function selectDisplayedImageRef(
+  state: Pick<
+    StorySessionState,
+    "tree" | "selectedNodeId" | "imageRefs" | "workflowByNodeId"
+  >
+): ImageRef | null {
+  const selectedImage = findNearestImageRef({
+    tree: state.tree,
+    selectedNodeId: state.selectedNodeId,
+    imageRefs: state.imageRefs,
+    workflowByNodeId: state.workflowByNodeId
+  });
+
+  return selectedImage ?? selectLatestStoredImageRef(state.imageRefs);
+}
+
+function findNearestImageRef(input: {
+  tree: StorySessionState["tree"];
+  selectedNodeId: string | null;
+  imageRefs: StorySessionState["imageRefs"];
+  workflowByNodeId: StorySessionState["workflowByNodeId"];
+}): ImageRef | null {
+  let nodeId = input.selectedNodeId;
+
+  while (nodeId) {
+    const imageRef =
+      parseWorkflowImageRef(input.workflowByNodeId[nodeId]) ??
+      input.imageRefs[nodeId] ??
+      parseStableImageRef(resolveStoryNodeFields(input.tree, nodeId).imageRef);
+
+    if (imageRef) {
+      return imageRef;
+    }
+
+    nodeId = getParentId(input.tree, nodeId);
+  }
+
+  return null;
+}
+
+function parseWorkflowImageRef(
+  workflow: StorySessionState["workflowByNodeId"][string] | undefined
+): ImageRef | null {
+  const imageStep = workflow?.stepStates.image;
+
+  if (!imageStep || imageStep.status === "generating") {
+    return null;
+  }
+
+  const imageRefValue = imageStep.edited?.imageRef ?? imageStep.generated?.imageRef;
+  return typeof imageRefValue === "string"
+    ? parseStableImageRef(imageRefValue)
+    : null;
+}
+
+function selectLatestStoredImageRef(
+  imageRefs: StorySessionState["imageRefs"]
+): ImageRef | null {
+  let latest: ImageRef | null = null;
+  let latestTime = Number.NEGATIVE_INFINITY;
+
+  for (const imageRef of Object.values(imageRefs)) {
+    const createdAt = Date.parse(imageRef.created_at);
+    const sortKey = Number.isFinite(createdAt) ? createdAt : latestTime + 1;
+
+    if (!latest || sortKey >= latestTime) {
+      latest = imageRef;
+      latestTime = sortKey;
+    }
+  }
+
+  return latest;
+}
+
+const stableParsedImageRefs = new Map<string, ImageRef | null>();
+
+function parseStableImageRef(value: string): ImageRef | null {
+  if (!value.trim()) {
+    return null;
+  }
+
+  if (!stableParsedImageRefs.has(value)) {
+    stableParsedImageRefs.set(value, parseImageRef(value));
+  }
+
+  return stableParsedImageRefs.get(value) ?? null;
 }

@@ -63,7 +63,8 @@ export function createStoryStepGenerators(): StoryWorkflowStepGenerators {
     selectedTags: generateSelectedTagsStep,
     danbot: generateDanbotStep,
     prompt: generatePromptStep,
-    image: generateImageStep
+    image: generateImageStep,
+    nextScene: generateNextSceneStep
   };
 }
 
@@ -278,6 +279,12 @@ export async function generateImageStep(input: {
       createdAt: now
     }),
     warnings: result.warnings
+  };
+}
+
+export function generateNextSceneStep(): WorkflowGenerationResult<StoryWorkflowPayload> {
+  return {
+    value: {}
   };
 }
 

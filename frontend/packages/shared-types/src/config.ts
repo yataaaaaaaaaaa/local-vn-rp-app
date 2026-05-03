@@ -70,6 +70,10 @@ export interface BackendRuntimeConfig {
     scheduler: string;
     timeout_seconds: number;
   };
+  prompts: {
+    default_positive_prompt: string;
+    default_negative_prompt: string;
+  };
   danbot: {
     backend: "danbot_nl";
     model_path: string;

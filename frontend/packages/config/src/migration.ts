@@ -38,6 +38,10 @@ export function migrateBackendRuntimeConfig(raw: unknown, launcher?: Partial<Bac
       default_cfg_scale: positiveNumber(partial.image?.default_cfg_scale, defaults.image.default_cfg_scale),
       timeout_seconds: positiveNumber(partial.image?.timeout_seconds, defaults.image.timeout_seconds)
     },
+    prompts: {
+      default_positive_prompt: stringValue(partial.prompts?.default_positive_prompt, defaults.prompts.default_positive_prompt),
+      default_negative_prompt: stringValue(partial.prompts?.default_negative_prompt, defaults.prompts.default_negative_prompt)
+    },
     danbot: {
       ...partial.danbot,
       max_tags: positiveNumber(partial.danbot?.max_tags, defaults.danbot.max_tags)
@@ -87,6 +91,10 @@ function stripRuntimeOwnedLlmSettings(value: BackendRuntimeConfigPatch["llm"]): 
     llama_server_port?: unknown;
   };
   return clean;
+}
+
+function stringValue(value: unknown, fallback: string): string {
+  return typeof value === "string" ? value : fallback;
 }
 
 function positiveNumber(value: unknown, fallback: number): number {

@@ -94,7 +94,7 @@ export function selectCanGenerateStep(input: {
     return false;
   }
 
-  if (input.isBackendReady === false) {
+  if (input.isBackendReady === false && input.stepId !== "nextScene") {
     return false;
   }
 

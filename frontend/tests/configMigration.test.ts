@@ -4,7 +4,11 @@ import { migrateBackendRuntimeConfig } from "@local-vn/config";
 describe("backend runtime config migration", () => {
   it("keeps backend config separate and applies launcher runtime overrides", () => {
     const config = migrateBackendRuntimeConfig(
-      { image: { model_path: "D:/models/image.safetensors", default_steps: 32 }, danbot: { max_tags: 40 } },
+      {
+        image: { model_path: "D:/models/image.safetensors", default_steps: 32 },
+        prompts: { default_negative_prompt: "bad hands" },
+        danbot: { max_tags: 40 }
+      },
       { baseUrl: "http://127.0.0.1:17860", host: "127.0.0.1", port: 17860 }
     );
 
@@ -13,6 +17,7 @@ describe("backend runtime config migration", () => {
     expect(config.image.backend).toBe("diffusers");
     expect(config.image.model_path).toBe("D:/models/image.safetensors");
     expect(config.image.default_steps).toBe(32);
+    expect(config.prompts.default_negative_prompt).toBe("bad hands");
     expect(config.danbot.backend).toBe("danbot_nl");
     expect(config.danbot.max_tags).toBe(40);
   });

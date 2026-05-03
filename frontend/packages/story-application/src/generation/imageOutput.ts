@@ -7,7 +7,7 @@ import type {
   ImageRef,
   StoryNodeFields
 } from "@local-vn/story-domain";
-import { stringifyImageRef } from "@local-vn/story-domain";
+import { joinPromptParts, stringifyImageRef } from "@local-vn/story-domain";
 
 export function createImageId(input: {
   nodeId: string;
@@ -30,12 +30,20 @@ export function buildImageGenerateRequest(input: {
   outputPath: string;
   seed?: number;
 }): ImageGenerateRequest {
+  const scenePositivePrompt =
+    input.fields.positivePrompt ||
+    input.fields.selectedTags ||
+    input.fields.danbotTags;
+
   return {
-    positive_prompt:
-      input.fields.positivePrompt ||
-      input.fields.selectedTags ||
-      input.fields.danbotTags,
-    negative_prompt: input.fields.negativePrompt,
+    positive_prompt: mergePromptTexts([
+      input.config.prompts.default_positive_prompt,
+      scenePositivePrompt
+    ]),
+    negative_prompt: mergePromptTexts([
+      input.config.prompts.default_negative_prompt,
+      input.fields.negativePrompt
+    ]),
     model_path: input.config.image.model_path || undefined,
     width: input.config.image.default_width,
     height: input.config.image.default_height,
@@ -82,4 +90,29 @@ export function createImageRefPayload(input: {
       })
     )
   };
+}
+
+export function mergePromptTexts(parts: Array<string | null | undefined>): string {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+
+  for (const token of splitPromptParts(joinPromptParts(parts))) {
+    const key = token.toLocaleLowerCase();
+
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    merged.push(token);
+  }
+
+  return merged.join("\n\n");
+}
+
+function splitPromptParts(prompt: string): string[] {
+  return prompt
+    .split(/\n+/g)
+    .map((part) => part.trim())
+    .filter(Boolean);
 }

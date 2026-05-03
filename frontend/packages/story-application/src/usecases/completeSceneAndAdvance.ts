@@ -31,8 +31,10 @@ export function completeSceneAndAdvance(
   const currentFields =
     input.currentFields ?? resolveStoryNodeFields(input.tree, input.nodeId);
 
+  const nextSceneContext = buildNextSceneContext(currentFields);
   const childInitialFields: Partial<StoryNodeFields> = {
-    context: buildNextSceneContext(currentFields),
+    context: nextSceneContext,
+    negativePrompt: currentFields.negativePrompt,
     ...(input.initialChildFields ?? {})
   };
 
@@ -44,7 +46,16 @@ export function completeSceneAndAdvance(
   );
 
   const workflowByNodeId = cloneWorkflowByNodeId(input.workflowByNodeId);
-  workflowByNodeId[child.nodeId] = createStoryWorkflowSnapshot();
+  const childWorkflow = createStoryWorkflowSnapshot("userText");
+
+  childWorkflow.stepStates.context = {
+    status: "validated",
+    generated: { context: nextSceneContext },
+    edited: { context: nextSceneContext }
+  };
+  childWorkflow.frontierStepId = "userText";
+  childWorkflow.activeStepId = "userText";
+  workflowByNodeId[child.nodeId] = childWorkflow;
 
   return {
     tree: child.tree,

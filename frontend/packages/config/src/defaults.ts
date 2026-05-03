@@ -5,6 +5,7 @@ export type BackendRuntimeConfigPatch = Partial<{
   backend: Partial<BackendRuntimeConfig["backend"]>;
   llm: Partial<BackendRuntimeConfig["llm"]>;
   image: Partial<BackendRuntimeConfig["image"]>;
+  prompts: Partial<BackendRuntimeConfig["prompts"]>;
   danbot: Partial<BackendRuntimeConfig["danbot"]>;
 }>;
 
@@ -49,6 +50,10 @@ export function createDefaultBackendRuntimeConfig(overrides: BackendRuntimeConfi
       scheduler: "normal",
       timeout_seconds: 180
     },
+    prompts: {
+      default_positive_prompt: "",
+      default_negative_prompt: "lowres, bad anatomy"
+    },
     danbot: {
       backend: "danbot_nl",
       model_path: "",
@@ -79,6 +84,7 @@ function mergeBackendRuntimeConfig(base: BackendRuntimeConfig, overrides: Backen
     backend: { ...base.backend, ...overrides.backend },
     llm: { ...base.llm, ...stripRuntimeOwnedLlmSettings(overrides.llm), backend: "llama_server" },
     image: { ...base.image, ...overrides.image, backend: "diffusers", manual_lora_paths: overrides.image?.manual_lora_paths ?? base.image.manual_lora_paths },
+    prompts: { ...base.prompts, ...overrides.prompts },
     danbot: { ...base.danbot, ...overrides.danbot, backend: "danbot_nl" }
   };
 }

@@ -80,5 +80,7 @@ export function labelForStoryWorkflowStep(stepId: StoryWorkflowStepId): string {
       return "Prompt";
     case "image":
       return "Image";
+    case "nextScene":
+      return "Go to Next Scene";
   }
 }

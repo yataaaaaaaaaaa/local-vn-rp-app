@@ -346,6 +346,39 @@ export function BackendConfigPanel() {
             value={config.image.timeout_seconds}
             onChange={(value) => patchImageNumber("timeout_seconds", value)}
           />
+
+          <h3>Global Prompt Defaults</h3>
+          <p className="small">
+            These prompts are stored once in the global backend config and are
+            merged into every image request without copying them into each scene.
+          </p>
+          <label className="field">
+            <span>Default positive prompt</span>
+            <textarea
+              value={config.prompts.default_positive_prompt}
+              rows={4}
+              placeholder="Optional global quality/style prompt"
+              onChange={(event) =>
+                patchSection("prompts", {
+                  default_positive_prompt: event.currentTarget.value
+                })
+              }
+            />
+          </label>
+          <label className="field">
+            <span>Default negative prompt</span>
+            <textarea
+              value={config.prompts.default_negative_prompt}
+              rows={4}
+              placeholder="lowres, bad anatomy"
+              onChange={(event) =>
+                patchSection("prompts", {
+                  default_negative_prompt: event.currentTarget.value
+                })
+              }
+            />
+          </label>
+
           <div className="button-row">
             <button
               onClick={() =>

@@ -9,6 +9,8 @@ describe("config package", () => {
     expect(config.llm.backend).toBe("llama_server");
     expect(config.image.backend).toBe("diffusers");
     expect(config.danbot.backend).toBe("danbot_nl");
+    expect(config.prompts.default_negative_prompt).toBe("lowres, bad anatomy");
+    expect(config.prompts.default_positive_prompt).toBe("");
     expect("story" in config).toBe(false);
   });
 
@@ -28,8 +30,13 @@ describe("config package", () => {
   });
 
   it("migrates backend runtime config", () => {
-    const migrated = migrateBackendRuntimeConfig({ image: { default_steps: 30 }, danbot: { max_tags: 12 } });
+    const migrated = migrateBackendRuntimeConfig({
+      image: { default_steps: 30 },
+      prompts: { default_positive_prompt: "cinematic lighting" },
+      danbot: { max_tags: 12 }
+    });
     expect(migrated.image.default_steps).toBe(30);
+    expect(migrated.prompts.default_positive_prompt).toBe("cinematic lighting");
     expect(migrated.danbot.max_tags).toBe(12);
   });
 });
