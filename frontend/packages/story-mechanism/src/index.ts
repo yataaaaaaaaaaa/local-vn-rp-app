@@ -21,6 +21,7 @@ import {
 
 export * from "./workflowCore";
 export * from "./backendWorkflow";
+export * from "./storyWorkflowRunner";
 
 export type StoryMechanismBackend = Pick<
   BackendClient,
@@ -94,7 +95,7 @@ export async function generateAutomaticUserAnswerForNode(input: StoryNodeGenerat
   const result = await input.backend.generateLlm({
     prompt: buildAutomaticUserAnswerPrompt(input),
     ...rpNovelLlmRequestConfig(input.config),
-    max_tokens: Math.min(input.config.llm.max_tokens, 180)
+    max_tokens: Math.min(input.config.llm.max_tokens, 80)
   });
   return { userText: result.text.trim() };
 }
@@ -102,7 +103,8 @@ export async function generateAutomaticUserAnswerForNode(input: StoryNodeGenerat
 export async function generateDialogueForNode(input: StoryNodeGenerationInput): Promise<{ dialogue: string }> {
   const result = await input.backend.generateLlm({
     prompt: buildRpAnswerPrompt(input),
-    ...rpNovelLlmRequestConfig(input.config)
+    ...rpNovelLlmRequestConfig(input.config),
+    max_tokens: Math.min(input.config.llm.max_tokens, 140)
   });
   return { dialogue: result.text.trim() };
 }
@@ -110,7 +112,8 @@ export async function generateDialogueForNode(input: StoryNodeGenerationInput): 
 export async function generateVisualDescriptionForNode(input: StoryNodeGenerationInput): Promise<{ visualDescription: string }> {
   const result = await input.backend.generateLlm({
     prompt: buildVisualRepresentationPrompt(input),
-    ...rpNovelLlmRequestConfig(input.config)
+    ...rpNovelLlmRequestConfig(input.config),
+    max_tokens: Math.min(input.config.llm.max_tokens, 90)
   });
   return { visualDescription: result.text.trim() };
 }

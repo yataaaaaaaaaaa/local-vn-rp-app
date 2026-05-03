@@ -4,5 +4,6 @@ export * from "./DanbooruResolverPanel";
 export * from "./LeafStepTabs";
 export * from "./TreeCommandPalette";
 export * from "./VisualNovelStage";
+export * from "./VisualNovelStageTopPanel";
 export * from "./scene-tree-navigator";
 export * from "./useResolvedCurrentNode";

@@ -3,12 +3,12 @@ import { DanbooruResolverPanel } from "./DanbooruResolverPanel";
 import { LeafStepTabs } from "./LeafStepTabs";
 import { StoryTreeSceneNavigator } from "./scene-tree-navigator";
 import { TreeCommandPalette } from "./TreeCommandPalette";
-import { VisualNovelStage } from "./VisualNovelStage";
+import { VisualNovelStageTopPanel } from "./VisualNovelStageTopPanel";
 
 export function AppLayout() {
   return (
     <main className="app-shell">
-      <VisualNovelStage />
+      <VisualNovelStageTopPanel />
       <TreeCommandPalette />
       <StoryTreeSceneNavigator />
       <LeafStepTabs />

@@ -87,7 +87,7 @@ export function createStoryWorkflowSteps(modes: StoryWorkflowModes = {}): StoryW
             selectedNodeId: context.selectedNodeId
           }),
           ...rpNovelLlmRequestConfig(context.config),
-          max_tokens: Math.min(context.config.llm.max_tokens, 180)
+          max_tokens: Math.min(context.config.llm.max_tokens, 80)
         });
         return { value: { userText: result.text.trim() } };
       },
@@ -108,7 +108,8 @@ export function createStoryWorkflowSteps(modes: StoryWorkflowModes = {}): StoryW
             storyId: context.storyId,
             selectedNodeId: context.selectedNodeId
           }),
-          ...rpNovelLlmRequestConfig(context.config)
+          ...rpNovelLlmRequestConfig(context.config),
+          max_tokens: Math.min(context.config.llm.max_tokens, 140)
         });
         return { value: { dialogue: result.text.trim() } };
       },
@@ -129,7 +130,8 @@ export function createStoryWorkflowSteps(modes: StoryWorkflowModes = {}): StoryW
             storyId: context.storyId,
             selectedNodeId: context.selectedNodeId
           }),
-          ...rpNovelLlmRequestConfig(context.config)
+          ...rpNovelLlmRequestConfig(context.config),
+          max_tokens: Math.min(context.config.llm.max_tokens, 90)
         });
         return { value: { visualDescription: result.text.trim(), resolverText: result.text.trim() } };
       },
