@@ -10,14 +10,14 @@ export function KSamplerProgress({ runningJob }: KSamplerProgressProps) {
   }
 
   return (
-    <div className="mb-4 rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sm text-sky-100">
-      <div className="flex items-center justify-between gap-3">
+    <div className="workflow-progress">
+      <div className="workflow-progress-header">
         <span>Generating {runningJob.stepId}...</span>
-        <span className="text-xs text-sky-200/70">{runningJob.nodeId}</span>
+        <span>{runningJob.nodeId}</span>
       </div>
 
-      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-sky-950">
-        <div className="h-full w-1/2 animate-pulse rounded-full bg-sky-300" />
+      <div className="workflow-progress-track">
+        <div className="workflow-progress-fill" />
       </div>
     </div>
   );

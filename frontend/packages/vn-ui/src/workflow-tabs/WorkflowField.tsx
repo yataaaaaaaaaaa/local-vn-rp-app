@@ -24,10 +24,10 @@ export function WorkflowField({
     hasGeneratedValue && generatedValue !== value;
 
   return (
-    <label className="block">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <span className="text-sm font-medium text-zinc-200">{label}</span>
-        <span className="text-xs text-zinc-500">{field}</span>
+    <label className="workflow-field">
+      <div className="workflow-field-header">
+        <span className="workflow-field-label">{label}</span>
+        <span className="workflow-field-key">{field}</span>
       </div>
 
       {multiline ? (
@@ -36,25 +36,19 @@ export function WorkflowField({
           disabled={disabled}
           rows={field === "positivePrompt" || field === "negativePrompt" ? 6 : 8}
           onChange={(event) => onChange(event.currentTarget.value)}
-          className="min-h-28 w-full resize-y rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm leading-6 text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
         />
       ) : (
         <input
           value={value}
           disabled={disabled}
           onChange={(event) => onChange(event.currentTarget.value)}
-          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-600 focus:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
         />
       )}
 
       {isChangedFromGenerated ? (
-        <details className="mt-2 rounded-xl border border-zinc-800 bg-zinc-900/70 px-3 py-2">
-          <summary className="cursor-pointer text-xs text-zinc-400">
-            Show generated candidate
-          </summary>
-          <pre className="mt-2 whitespace-pre-wrap text-xs leading-5 text-zinc-300">
-            {generatedValue}
-          </pre>
+        <details className="workflow-generated-candidate">
+          <summary>Show generated candidate</summary>
+          <pre>{generatedValue}</pre>
         </details>
       ) : null}
     </label>

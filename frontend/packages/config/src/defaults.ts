@@ -25,12 +25,12 @@ export function createDefaultBackendRuntimeConfig(overrides: BackendRuntimeConfi
       prompt_format: "mistral_inst",
       startup_timeout_seconds: 90,
       timeout_seconds: 120,
-      max_tokens: 256,
-      temperature: 0.7,
-      top_p: 0.9,
+      max_tokens: 96,
+      temperature: 0.62,
+      top_p: 0.86,
       top_k: 40,
       min_p: 0.05,
-      repeat_penalty: 1.1
+      repeat_penalty: 1.12
     },
     image: {
       backend: "diffusers",

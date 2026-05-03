@@ -1,8 +1,5 @@
 import { useMemo, useState } from "react";
-import {
-  parseImageRef,
-  toFileUrl
-} from "@local-vn/story-domain";
+import { parseImageRef, toFileUrl } from "@local-vn/story-domain";
 import { useRuntimeEventsStore, useStorySessionStore } from "@local-vn/stores";
 
 import {
@@ -11,12 +8,13 @@ import {
 } from "./useResolvedCurrentNode";
 
 export function VisualNovelStage() {
-  const manifest = useStorySessionStore((state) => state.manifest);
-  const selectedNodeId = useStorySessionStore((state) => state.selectedNodeId);
   const node = useResolvedCurrentNode();
   const parentNode = useResolvedParentNode();
   const submitUserTextToStory = useStorySessionStore(
     (state) => state.submitUserText
+  );
+  const createChildFromCurrent = useStorySessionStore(
+    (state) => state.createChildFromCurrent
   );
   const storyBusy = useStorySessionStore((state) => state.busy);
   const runningJob = useStorySessionStore((state) => state.runningJob);
@@ -29,6 +27,7 @@ export function VisualNovelStage() {
   const textByJobId = useRuntimeEventsStore((state) => state.textByJobId);
 
   const [userText, setUserText] = useState("");
+  const [autoGenerate, setAutoGenerate] = useState(true);
 
   const image = useMemo(() => parseImageRef(node.imageRef), [node.imageRef]);
   const parentImage = useMemo(
@@ -54,7 +53,12 @@ export function VisualNovelStage() {
       return;
     }
 
-    await submitUserTextToStory(text);
+    if (autoGenerate) {
+      await submitUserTextToStory(text);
+    } else {
+      await createChildFromCurrent(text);
+    }
+
     setUserText("");
   }
 
@@ -64,7 +68,7 @@ export function VisualNovelStage() {
     node.dialogue ||
     node.context ||
     fallbackDialogue ||
-    "The story is ready. Enter a user action below to create the next leaf.";
+    "The story is ready. Enter the player action or line below.";
 
   return (
     <section className="vn-stage" aria-label="Visual novel stage">
@@ -85,21 +89,6 @@ export function VisualNovelStage() {
       </div>
 
       <div className="vn-dialogue-pane">
-        <div className="vn-meta">
-          <span>
-            <strong>{manifest?.title ?? "Untitled Story"}</strong>
-          </span>
-          <span>
-            Node: <code>{selectedNodeId}</code>
-          </span>
-          {displayImage ? (
-            <span>
-              Image seed: <code>{displayImage.seed}</code>
-              {image ? null : " (previous scene)"}
-            </span>
-          ) : null}
-        </div>
-
         <div className="vn-dialogue-scroll">
           {dialogueText}
           {storyBusy && activeDialogueStream ? (
@@ -111,21 +100,36 @@ export function VisualNovelStage() {
       </div>
 
       <div className="vn-user-input-pane">
-        <label>
-          <span>User text for the next leaf</span>
+        <label className="vn-user-textarea">
+          <span className="sr-only">User text for the next leaf</span>
           <textarea
             value={userText}
             onChange={(event) => setUserText(event.target.value)}
-            placeholder="Describe the player action or spoken line..."
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+                event.preventDefault();
+                void submitUserText();
+              }
+            }}
+            placeholder="Player action or spoken line..."
           />
         </label>
 
-        <div className="vn-actions">
+        <div className="vn-actions vn-input-actions">
+          <label className="vn-auto-generate-toggle" title="Continue the workflow with the LLM after adding this user text">
+            <input
+              type="checkbox"
+              checked={autoGenerate}
+              onChange={(event) => setAutoGenerate(event.currentTarget.checked)}
+            />
+            <span>LLM</span>
+          </label>
+
           <button
             disabled={storyBusy || !userText.trim()}
             onClick={() => void submitUserText()}
           >
-            {storyBusy ? "Streaming..." : "Send"}
+            {storyBusy ? "Streaming..." : autoGenerate ? "Send + Generate" : "Add Text"}
           </button>
         </div>
       </div>

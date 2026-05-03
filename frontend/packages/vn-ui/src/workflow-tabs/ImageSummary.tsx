@@ -1,7 +1,4 @@
-import {
-  parseImageRef,
-  toFileUrl
-} from "@local-vn/story-domain";
+import { parseImageRef, toFileUrl } from "@local-vn/story-domain";
 
 export interface ImageSummaryProps {
   imageRef: string;
@@ -12,43 +9,35 @@ export function ImageSummary({ imageRef }: ImageSummaryProps) {
 
   if (!parsed) {
     return (
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 text-sm text-zinc-400">
+      <div className="image-summary image-summary-empty">
         No generated image is attached to this scene yet.
       </div>
     );
   }
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <div className="image-summary">
+      <div className="image-summary-header">
         <div>
-          <h3 className="text-sm font-medium text-zinc-100">
-            Generated image
-          </h3>
-          <p className="text-xs text-zinc-500">{parsed.image_id}</p>
+          <h3>Generated image</h3>
+          <p>{parsed.image_id}</p>
         </div>
-        <span className="rounded-full border border-zinc-700 px-2 py-1 text-xs text-zinc-400">
-          seed {parsed.seed}
-        </span>
+        <span>seed {parsed.seed}</span>
       </div>
 
-      <img
-        src={toFileUrl(parsed.image_path)}
-        alt="Generated scene"
-        className="max-h-[420px] w-full rounded-xl object-contain"
-      />
+      <img src={toFileUrl(parsed.image_path)} alt="Generated scene" />
 
-      <dl className="mt-3 grid gap-2 text-xs text-zinc-400">
+      <dl className="image-summary-meta">
         <div>
-          <dt className="font-medium text-zinc-300">Image path</dt>
-          <dd className="break-all">{parsed.image_path}</dd>
+          <dt>Image path</dt>
+          <dd>{parsed.image_path}</dd>
         </div>
         <div>
-          <dt className="font-medium text-zinc-300">Metadata path</dt>
-          <dd className="break-all">{parsed.metadata_path}</dd>
+          <dt>Metadata path</dt>
+          <dd>{parsed.metadata_path}</dd>
         </div>
         <div>
-          <dt className="font-medium text-zinc-300">Created at</dt>
+          <dt>Created at</dt>
           <dd>{parsed.created_at}</dd>
         </div>
       </dl>

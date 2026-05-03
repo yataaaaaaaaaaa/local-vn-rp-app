@@ -69,8 +69,8 @@ export function LeafStepTabs() {
     runningJob?.nodeId === selectedNodeId && runningJob.stepId === activeStepId;
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col rounded-2xl border border-zinc-800 bg-zinc-950/70 shadow-xl">
-      <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-zinc-800 p-2">
+    <section className="workflow-panel">
+      <div className="workflow-step-tabs" role="tablist" aria-label="Generation steps">
         {storyWorkflowStepIds.map((stepId) => {
           const status = workflow?.stepStates[stepId]?.status ?? "empty";
           const selected = stepId === activeStepId;
@@ -81,40 +81,38 @@ export function LeafStepTabs() {
               type="button"
               onClick={() => selectWorkflowStep(stepId)}
               className={[
-                "whitespace-nowrap rounded-xl px-3 py-2 text-sm transition",
-                selected
-                  ? "bg-zinc-100 text-zinc-950"
-                  : "bg-zinc-900 text-zinc-300 hover:bg-zinc-800",
-                status === "validated" ? "ring-1 ring-emerald-500/60" : "",
-                status === "failed" ? "ring-1 ring-red-500/60" : "",
-                status === "generating" ? "animate-pulse ring-1 ring-sky-500/60" : ""
+                "workflow-step-tab",
+                selected ? "is-selected" : "",
+                `status-${status}`
               ].join(" ")}
+              aria-selected={selected}
+              role="tab"
             >
-              <span>{labelForStoryWorkflowStep(stepId)}</span>
-              <span className="ml-2 text-xs opacity-70">{status}</span>
+              <span className="workflow-step-label">
+                {labelForStoryWorkflowStep(stepId)}
+              </span>
+              <span className="workflow-step-status">{status}</span>
             </button>
           );
         })}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto p-4">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="workflow-body">
+        <div className="workflow-toolbar">
           <div>
-            <h2 className="text-lg font-semibold text-zinc-100">
-              {labelForStoryWorkflowStep(activeStepId)}
-            </h2>
-            <p className="text-sm text-zinc-400">
+            <h2>{labelForStoryWorkflowStep(activeStepId)}</h2>
+            <p>
               {stepState?.status ?? "empty"}
               {stepState?.error ? ` — ${stepState.error}` : ""}
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="workflow-actions">
             {isGenerating && selectedNodeId ? (
               <button
                 type="button"
                 onClick={() => cancelNode(selectedNodeId)}
-                className="rounded-xl border border-red-500/40 px-3 py-2 text-sm text-red-200 hover:bg-red-500/10"
+                className="danger-button"
               >
                 Cancel
               </button>
@@ -124,7 +122,6 @@ export function LeafStepTabs() {
               type="button"
               disabled={!canGenerate || busy}
               onClick={() => void regenerateStep(activeStepId)}
-              className="rounded-xl border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Generate
             </button>
@@ -133,7 +130,7 @@ export function LeafStepTabs() {
               type="button"
               disabled={!canValidate || busy}
               onClick={() => void validateStep(activeStepId)}
-              className="rounded-xl bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-950 hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+              className="primary-button"
             >
               Validate
             </button>
@@ -142,13 +139,9 @@ export function LeafStepTabs() {
 
         {isGenerating ? <KSamplerProgress runningJob={runningJob} /> : null}
 
-        {message ? (
-          <div className="mb-4 rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-300">
-            {message}
-          </div>
-        ) : null}
+        {message ? <div className="workflow-message">{message}</div> : null}
 
-        <div className="space-y-4">
+        <div className="workflow-fields">
           {fieldsForStoryWorkflowStep(activeStepId).map((field) => (
             <WorkflowField
               key={field}
@@ -164,7 +157,7 @@ export function LeafStepTabs() {
         </div>
 
         {activeStepId === "image" ? (
-          <div className="mt-4">
+          <div className="workflow-image-summary">
             <ImageSummary imageRef={payload.imageRef ?? currentFields.imageRef} />
           </div>
         ) : null}

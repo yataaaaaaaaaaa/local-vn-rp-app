@@ -26,19 +26,8 @@ export function VisualNovelStageTopPanel() {
 
   return (
     <section className="visual-novel-stage-panel">
-      <header className="panel-header">
-        <div>
-          <h1>{manifest?.title ?? "Local VN/RP"}</h1>
-          <div className="small">
-            Story: <code>{storyId ?? "none"}</code>
-            {" · "}
-            Node: <code>{selectedNodeId ?? "none"}</code>
-            {" · "}
-            {dirty ? "Unsaved changes" : "Saved"}
-          </div>
-        </div>
-
-        <div className="button-row">
+      <header className="vn-menu-bar" aria-label="Game controls and session info">
+        <nav className="vn-menu-actions" aria-label="Story navigation">
           <button disabled={busy} onClick={() => goBack()}>
             Back
           </button>
@@ -49,13 +38,13 @@ export function VisualNovelStageTopPanel() {
             Parent
           </button>
           <button disabled={busy} onClick={() => goToFirstChild()}>
-            First child
+            Child
           </button>
           <button disabled={busy} onClick={() => goToPreviousSibling()}>
-            Previous sibling
+            Prev
           </button>
           <button disabled={busy} onClick={() => goToNextSibling()}>
-            Next sibling
+            Next
           </button>
           <button disabled={!dirty || busy} onClick={() => void saveStory()}>
             Save
@@ -63,35 +52,32 @@ export function VisualNovelStageTopPanel() {
           <button disabled={!busy} onClick={() => cancelAll()}>
             Cancel
           </button>
-          <button onClick={() => void refreshStatus()}>Refresh runtime</button>
+          <button onClick={() => void refreshStatus()}>Runtime</button>
+        </nav>
+
+        <div className="vn-session-info" title={message ?? undefined}>
+          <strong>{manifest?.title ?? "Local VN/RP"}</strong>
+          <span>
+            Story <code>{storyId ?? "none"}</code>
+          </span>
+          <span>
+            Node <code>{selectedNodeId ?? "none"}</code>
+          </span>
+          <span className={busy ? "status-warn" : "status-ok"}>
+            {busy ? "busy" : "idle"}
+          </span>
+          <span className={dirty ? "status-warn" : "status-ok"}>
+            {dirty ? "unsaved" : "saved"}
+          </span>
+          <span>
+            LLM <code>{status?.loaded_llm ? "on" : "none"}</code>
+          </span>
+          <span>
+            Img <code>{status?.loaded_image_model ? "on" : "none"}</code>
+          </span>
+          {message ? <em>{message}</em> : null}
         </div>
       </header>
-
-      <div className="status-row">
-        <span>
-          Session:{" "}
-          <strong className={busy ? "status-warn" : "status-ok"}>
-            {busy ? "busy" : "idle"}
-          </strong>
-        </span>
-        <span>
-          Runtime:{" "}
-          <strong className={status?.busy ? "status-warn" : "status-ok"}>
-            {status?.busy ? "busy" : "idle"}
-          </strong>
-        </span>
-        <span>
-          LLM: <code>{status?.loaded_llm ?? "none"}</code>
-        </span>
-        <span>
-          Image: <code>{status?.loaded_image_model ?? "none"}</code>
-        </span>
-        <span>
-          DanBot: <code>{status?.loaded_danbot_model ?? "none"}</code>
-        </span>
-      </div>
-
-      {message ? <p className="small">{message}</p> : null}
 
       <VisualNovelStage />
     </section>

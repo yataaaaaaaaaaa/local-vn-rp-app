@@ -13,9 +13,13 @@ import {
 
 import type { StoryGenerationBackend } from "../ports";
 import {
+  RP_DIALOGUE_STOP,
   buildAutomaticUserAnswerPrompt,
   buildRpAnswerPrompt,
-  buildVisualRepresentationPrompt
+  buildVisualRepresentationPrompt,
+  cleanDialogueOutput,
+  cleanSingleLineOutput,
+  cleanVisualDescriptionOutput
 } from "./rpNovelPrompts";
 import { rpNovelLlmRequestConfig } from "./llmRequestConfig";
 import {
@@ -109,14 +113,15 @@ export async function generateUserTextStep(input: {
         selectedNodeId: input.context.selectedNodeId
       }),
       {
-        max_tokens: Math.min(input.context.config.llm.max_tokens, 80)
+        max_tokens: Math.min(input.context.config.llm.max_tokens, 40),
+        stop: RP_DIALOGUE_STOP
       }
     )
   );
 
   return {
     value: {
-      userText: result.text.trim()
+      userText: cleanSingleLineOutput(result.text)
     }
   };
 }
@@ -134,14 +139,15 @@ export async function generateDialogueStep(input: {
         selectedNodeId: input.context.selectedNodeId
       }),
       {
-        max_tokens: Math.min(input.context.config.llm.max_tokens, 140)
+        max_tokens: Math.min(input.context.config.llm.max_tokens, 64),
+        stop: RP_DIALOGUE_STOP
       }
     )
   );
 
   return {
     value: {
-      dialogue: result.text.trim()
+      dialogue: cleanDialogueOutput(result.text)
     }
   };
 }
@@ -159,12 +165,12 @@ export async function generateVisualDescriptionStep(input: {
         selectedNodeId: input.context.selectedNodeId
       }),
       {
-        max_tokens: Math.min(input.context.config.llm.max_tokens, 90)
+        max_tokens: Math.min(input.context.config.llm.max_tokens, 96)
       }
     )
   );
 
-  const text = result.text.trim();
+  const text = cleanVisualDescriptionOutput(result.text);
 
   return {
     value: {
