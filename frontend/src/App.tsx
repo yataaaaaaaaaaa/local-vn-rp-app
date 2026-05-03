@@ -1,19 +1,51 @@
 import { useEffect, useState } from "react";
 import { AppLayout } from "@local-vn/vn-ui";
-import { bootstrapFrontend, useLauncherStore, useStorySessionStore } from "@local-vn/stores";
+import { bootstrapFrontend } from "@local-vn/stores";
 
 export function App() {
   const [ready, setReady] = useState(false);
-  const launcherReady = useLauncherStore((state) => state.ready);
-  const storyId = useStorySessionStore((state) => state.storyId);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    bootstrapFrontend().then(() => setReady(true)).catch((error) => {
-      console.error(error);
-      setReady(true);
-    });
+    let cancelled = false;
+
+    void bootstrapFrontend()
+      .then(() => {
+        if (!cancelled) {
+          setReady(true);
+        }
+      })
+      .catch((reason) => {
+        if (!cancelled) {
+          setError(reason instanceof Error ? reason.message : String(reason));
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  if (!ready || !launcherReady || !storyId) return <main className="app-shell"><section className="panel">Loading local VN/RP app...</section></main>;
+  if (error) {
+    return (
+      <main className="app-shell">
+        <section className="panel">
+          <h1>Startup failed</h1>
+          <pre>{error}</pre>
+        </section>
+      </main>
+    );
+  }
+
+  if (!ready) {
+    return (
+      <main className="app-shell">
+        <section className="panel">
+          <h1>Loading Local VN/RP...</h1>
+        </section>
+      </main>
+    );
+  }
+
   return <AppLayout />;
 }

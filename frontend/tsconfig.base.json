@@ -29,11 +29,17 @@
       "@local-vn/shared-types": [
         "./packages/shared-types/src/index.ts"
       ],
-      "@local-vn/story-tree": [
-        "./packages/story-tree/src/index.ts"
+      "@local-vn/workflow-core": [
+        "./packages/workflow-core/src/index.ts"
       ],
-      "@local-vn/story-mechanism": [
-        "./packages/story-mechanism/src/index.ts"
+      "@local-vn/story-domain": [
+        "./packages/story-domain/src/index.ts"
+      ],
+      "@local-vn/story-application": [
+        "./packages/story-application/src/index.ts"
+      ],
+      "@local-vn/story-infrastructure": [
+        "./packages/story-infrastructure/src/index.ts"
       ],
       "@local-vn/stores": [
         "./packages/stores/src/index.ts"

@@ -1,8 +1,8 @@
 import { create } from "zustand";
 import { backendRuntimeConfigFile, createDefaultBackendRuntimeConfig, migrateBackendRuntimeConfig, readBackendRuntimeConfig, writeBackendRuntimeConfig } from "@local-vn/config";
 import type { BackendRuntimeConfig } from "@local-vn/shared-types";
-import { persistenceApi } from "./persistenceBridge";
 import { launcherArgsOrThrow } from "./useLauncherStore";
+import { persistenceApi } from "@local-vn/story-infrastructure";
 
 type BackendConfigSection = "backend" | "llm" | "image" | "danbot";
 

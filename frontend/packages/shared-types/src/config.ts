@@ -1,3 +1,18 @@
+export interface StoryNodeFields {
+  context: string;
+  userText: string;
+  dialogue: string;
+  visualDescription: string;
+  resolverText: string;
+  selectedTags: string;
+  danbotTags: string;
+  positivePrompt: string;
+  negativePrompt: string;
+  imageRef: string;
+}
+
+export type StoryNodeFieldKey = keyof StoryNodeFields;
+
 export interface LauncherArgs {
   backend: string;
   backendHost: string;
@@ -36,6 +51,7 @@ export interface BackendRuntimeConfig {
     top_k?: number;
     min_p?: number;
     repeat_penalty?: number;
+    stop?: string[];
   };
   image: {
     backend: "diffusers";

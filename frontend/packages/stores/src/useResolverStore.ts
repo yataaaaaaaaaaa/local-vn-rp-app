@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { extractDanbooruTags, type DanbooruResolverConfig, type DanbooruTagMatch } from "danbooru-tag-resolver";
 import { resolverConfigFile } from "@local-vn/config";
-import { persistenceApi } from "./persistenceBridge";
+import { persistenceApi } from "@local-vn/story-infrastructure";
 
 interface ResolverResult {
   tags: string[];

@@ -13,8 +13,10 @@ export default defineConfig({
       "@local-vn/backend-client": fileURLToPath(new URL("./packages/backend-client/src/index.ts", import.meta.url)),
       "@local-vn/config": fileURLToPath(new URL("./packages/config/src/index.ts", import.meta.url)),
       "@local-vn/shared-types": fileURLToPath(new URL("./packages/shared-types/src/index.ts", import.meta.url)),
-      "@local-vn/story-tree": fileURLToPath(new URL("./packages/story-tree/src/index.ts", import.meta.url)),
-      "@local-vn/story-mechanism": fileURLToPath(new URL("./packages/story-mechanism/src/index.ts", import.meta.url)),
+      "@local-vn/workflow-core": fileURLToPath(new URL("./packages/workflow-core/src/index.ts", import.meta.url)),
+      "@local-vn/story-domain": fileURLToPath(new URL("./packages/story-domain/src/index.ts", import.meta.url)),
+      "@local-vn/story-application": fileURLToPath(new URL("./packages/story-application/src/index.ts", import.meta.url)),
+      "@local-vn/story-infrastructure": fileURLToPath(new URL("./packages/story-infrastructure/src/index.ts", import.meta.url)),
       "@local-vn/stores": fileURLToPath(new URL("./packages/stores/src/index.ts", import.meta.url)),
       "@local-vn/vn-ui": fileURLToPath(new URL("./packages/vn-ui/src/index.ts", import.meta.url))
     }

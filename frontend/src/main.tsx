@@ -1,9 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import "@xyflow/react/dist/style.css";
 import { App } from "./App";
 import "./styles.css";
-import "danbooru-tag-resolver/style.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>

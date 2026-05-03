@@ -1,7 +1,11 @@
 import type { TextTree } from "@replayable-text-tree/core";
-import type { ImageRef } from "@local-vn/shared-types";
-import { parseImageRef, resolveStoryNodeFields, toFileUrl } from "@local-vn/story-tree";
-import { getChildIds } from "@local-vn/stores";
+import {
+  getChildIds,
+  parseImageRef,
+  resolveStoryNodeFields,
+  toFileUrl,
+  type ImageRef
+} from "@local-vn/story-domain";
 import type { SceneTreeInputNode } from "./types";
 
 export function storyTextTreeToSceneTree(params: {
@@ -24,7 +28,7 @@ export function storyTextTreeToSceneTree(params: {
       return {
         id: `${nodeId}__cycle_${depth}`,
         label: `${nodeId} loop`,
-        children: [],
+        children: []
       };
     }
 
@@ -38,7 +42,7 @@ export function storyTextTreeToSceneTree(params: {
       id: nodeId,
       label: labelForNode({ nodeId, fields, title, isRoot: nodeId === rootNodeId }),
       imageUrl: parsedImageRef ? toFileUrl(parsedImageRef.image_path) : undefined,
-      children: childIds.map((childId) => buildNode(childId, depth + 1)),
+      children: childIds.map((childId) => buildNode(childId, depth + 1))
     };
 
     visited.delete(nodeId);

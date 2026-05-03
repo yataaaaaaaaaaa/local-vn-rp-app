@@ -1,6 +1,4 @@
 export * from "./bootstrap";
-export * from "./persistenceBridge";
-export * from "./treeShape";
 export * from "./useBackendClientStore";
 export * from "./useBackendConfigStore";
 export * from "./useLauncherStore";

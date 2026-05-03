@@ -28,8 +28,15 @@ The existing `cli.py` starts Electron with:
 The Electron main process parses these arguments, validates file accesses against the launcher-provided storage roots, and exposes a preload bridge:
 
 ```ts
-window.launcher.getArgs()
-window.appPersistence.readJson/writeJson/readText/writeText/exists/remove/ensureDir/showItem
+window.launcher.getArgs();
+window.appPersistence.readJson /
+  writeJson /
+  readText /
+  writeText /
+  exists /
+  remove /
+  ensureDir /
+  showItem;
 ```
 
 ## Storage layout used
@@ -52,7 +59,6 @@ window.appPersistence.readJson/writeJson/readText/writeText/exists/remove/ensure
 packages/backend-client   Thin HTTP/SSE client only
 packages/config           Defaults, migration, storage path helpers, persistence interfaces
 packages/shared-types     Cross-package runtime/story/config types
-packages/story-tree       Schema, node fields, image refs, tree persistence helpers
 packages/stores           Zustand stores split by concern
 packages/vn-ui            React UI panels
 ```

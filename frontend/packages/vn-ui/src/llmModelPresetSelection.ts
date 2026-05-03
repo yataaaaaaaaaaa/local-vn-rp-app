@@ -1,5 +1,5 @@
 import type { BackendRuntimeConfig } from "@local-vn/shared-types";
-import { RP_NOVEL_PRESET } from "@local-vn/config";
+import { RP_NOVEL_PRESET } from "@local-vn/story-application";
 
 export type PickedLlmPresetResult = {
     label: string;

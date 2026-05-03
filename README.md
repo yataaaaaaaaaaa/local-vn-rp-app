@@ -5,7 +5,6 @@ Windows-targeted V1 scaffold for a local visual-novel/RP app with TypeScript-own
 ## Current architecture
 
 - TypeScript core logic owns story graph mutation, branching, switchers, scene-to-Danbooru resolution, prompt assembly, image-mode decisions, serialization, and metadata/snapshot creation.
-- `frontend/packages/story-mechanism` owns the story-generation choreography: LLM user answer, RP dialogue, visual description, DanBot prompt, image request, image reference attachment, and persistence. React components call this package instead of constructing backend requests themselves.
 - Zustand remains the intended frontend source of truth. UI/store code should call core logic instead of embedding deterministic story logic in UI components.
 - Python backend is now a Python subproject wrapper around `anything-backend-runtime` and delegates runtime ownership, queueing, generation, abort, unload, and close operations to that package.
 - Python backend does not own story state, branch decisions, switcher decisions, semantic scene resolution, Danbooru tag recipes, config persistence, or model adapter implementations.
@@ -62,6 +61,7 @@ frontend/packages/config/src/storagePaths.ts
 ```
 
 Runtime/model settings are story-local. Legacy shared config/root fields are ignored during migration into story settings.
+
 ## Scene-to-Danbooru workflow
 
 The previous keyword-to-weighted-tag expansion workflow has been replaced by this pipeline:
@@ -141,13 +141,10 @@ The Q5 GGUF is used for smoke-test LLM generation by default. Override paths wit
 
 The launcher supports an opt-in frontend product-test mode through `LOCAL_VN_RP_FRONTEND_MODE=product-test`. In this mode the frontend service runs a lightweight long-lived Node process that validates launcher arguments and writes `LOCAL_VN_RP_FRONTEND_READY_FILE` instead of opening Electron. The smoke test uses this mode, starts the real launcher/backend stack, lets the backend-owned runtime manage llama-server internally, waits for backend and frontend readiness, runs two story-generation steps, persists story nodes, generates tags and two-step diffusion images, verifies the generated images and metadata sidecars, and shuts the launcher down in test cleanup.
 
-A second product test validates the extracted TypeScript story mechanism package directly. Python starts the real launcher/backend stack and then runs a Vitest product test that imports `@local-vn/story-mechanism`, verifies the external model files, creates a story session, sends real backend requests, persists the generated node, and checks the generated image metadata:
-
 ```bat
 set LOCAL_VN_RP_RUN_PRODUCT_TEST=1
 python -m unittest product_tests.test_story_mechanism_product
 ```
-
 
 Python validation uses uv and no runtime downloads:
 

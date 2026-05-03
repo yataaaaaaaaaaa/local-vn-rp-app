@@ -23,10 +23,23 @@ export async function bootstrapFrontend(): Promise<void> {
   void useBackendClientStore.getState().refreshStatus();
 
   const selectedStoryId = useLayoutStore.getState().selectedStoryId;
-  const loaded = await useStorySessionStore.getState().loadStory(selectedStoryId);
-  if (!loaded) await useStorySessionStore.getState().createStory("Default Story", selectedStoryId);
+  const loaded = selectedStoryId
+    ? await useStorySessionStore.getState().loadStory(selectedStoryId).then(
+        () => true,
+        () => false
+      )
+    : false;
 
-  try { useRuntimeEventsStore.getState().connect(); } catch { /* Backend may not be up during frontend-only tests. */ }
+  if (!loaded) {
+    await useStorySessionStore.getState().createStory("Default Story");
+  }
+
+  try {
+    useRuntimeEventsStore.getState().connect();
+  } catch {
+    /* Backend may not be up during frontend-only tests. */
+  }
+
   bootstrapped = true;
 }
 
@@ -38,6 +51,6 @@ async function readLauncherArgs(): Promise<LauncherArgs> {
     backendPort: 17860,
     appRoot: "D:/Anything/storage/local-vn-rp-app-storage",
     storyRoot: "D:/Anything/storage/local-vn-rp-app-storage/stories",
-    outputRoot: "D:/Anything/storage/local-vn-rp-app-storage/outputs",
+    outputRoot: "D:/Anything/storage/local-vn-rp-app-storage/outputs"
   };
 }

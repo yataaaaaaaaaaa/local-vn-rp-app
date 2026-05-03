@@ -32,6 +32,8 @@ export interface LlmLoadRequest {
 export interface LlmGenerateRequest {
   prompt: string;
   model_path?: string;
+  prompt_format?: string;
+  context_size?: number;
   max_tokens?: number;
   temperature?: number;
   top_p?: number;

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { frontendLayoutFile } from "@local-vn/config";
-import { persistenceApi } from "./persistenceBridge";
+import { persistenceApi } from "@local-vn/story-infrastructure";
 
 interface PersistedLayoutSnapshot {
   selectedStoryId?: string;

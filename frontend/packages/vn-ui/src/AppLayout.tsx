@@ -1,6 +1,6 @@
-import { BackendConfigPanel } from "./BackendConfigPanel";
-import { DanbooruResolverPanel } from "./DanbooruResolverPanel";
-import { LeafStepTabs } from "./LeafStepTabs";
+import { BackendConfigPanel } from "./backend-config/BackendConfigPanel";
+import { DanbooruResolverPanel } from "./danbooru-resolver/DanbooruResolverPanel";
+import { LeafStepTabs } from "./workflow-tabs/LeafStepTabs";
 import { StoryTreeSceneNavigator } from "./scene-tree-navigator";
 import { TreeCommandPalette } from "./TreeCommandPalette";
 import { VisualNovelStageTopPanel } from "./VisualNovelStageTopPanel";
