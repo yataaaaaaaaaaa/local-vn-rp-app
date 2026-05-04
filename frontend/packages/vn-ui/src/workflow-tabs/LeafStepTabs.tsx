@@ -23,7 +23,7 @@ const fieldLabels: Record<StoryNodeFieldKey, string> = {
   context: "Context",
   userText: "User Text",
   dialogue: "Dialogue",
-  visualDescription: "Visual Description",
+  visualDescription: "Tagger-Safe Visual Cue",
   resolverText: "Resolver Text",
   selectedTags: "Selected Tags",
   danbotTags: "DanBot Tags",

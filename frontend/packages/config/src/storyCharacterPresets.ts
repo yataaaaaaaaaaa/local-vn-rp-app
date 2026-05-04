@@ -8,7 +8,7 @@ export interface StoryCharacterPreset {
 }
 
 const DUO_RULE = "Core cast: a woman/man duo. The man is the player/user character; never write his inner thoughts or decide his actions unless explicitly provided. The woman is the main NPC partner and romantic/dramatic counterpart.";
-const VN_STYLE_RULE = "VN style: keep dialogue textbox output short (1-3 lines); keep visual descriptions separate, concrete, and visible-only.";
+const VN_STYLE_RULE = "VN style: keep dialogue textbox output short (1-3 lines); keep tagger-safe visual cues separate, concrete, and visible-only.";
 
 export const STORY_CHARACTER_PRESETS: StoryCharacterPreset[] = [
   {

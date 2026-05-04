@@ -24,10 +24,8 @@ export function DanbooruResolverPanel() {
 
   const rawText = useMemo(
     () =>
-      currentNode.visualDescription ||
-      currentNode.dialogue ||
-      currentNode.context,
-    [currentNode.context, currentNode.dialogue, currentNode.visualDescription]
+      currentNode.resolverText || currentNode.visualDescription,
+    [currentNode.resolverText, currentNode.visualDescription]
   );
 
   const inputSegments = useMemo(
@@ -116,7 +114,7 @@ export function DanbooruResolverPanel() {
                     <span key={segment.key}>{segment.text}</span>
                   )
                 )
-              : "No visual description/dialogue/context available."}
+              : "No tagger-safe visual cue available."}
           </div>
         </div>
 

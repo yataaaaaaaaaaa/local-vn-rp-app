@@ -19,6 +19,16 @@ export const RP_NOVEL_STOP = [
   "\nAssistant:",
   "\nSystem:",
   "\nNarrator:",
+  "\nUSER:",
+  "\nUSER_",
+  "\nPLAYER:",
+  "\nNPC:",
+  "\nNPC_",
+  "\nNPC_REPLY:",
+  "\nVISUAL_CUE:",
+  "\nPREVIOUS_TURNS:",
+  "\nCURRENT_TURN:",
+  "\nFINAL TASK:",
   "\n# Scene",
   "\n# Visual",
   "\nScene description:",
@@ -42,91 +52,141 @@ export type RpPromptInput = {
   selectedNodeId?: string | null;
 };
 
-function baseRpInstruction(): string {
+function rpIdentityInstruction(): string {
   return [
-    "You are a visual-novel roleplay writing engine.",
+    "You are a visual-novel duo-RP writing engine.",
     "You write for a small VN textbox, not a chapter.",
-    "Hard rule: short output only. Prefer one line; never exceed three short lines.",
     "Preserve player agency.",
-    "Never write the player's dialogue, thoughts, emotions, or actions unless they were explicitly provided.",
-    "Keep story/dialogue text separate from visual scene-description text.",
-    "Return only the requested output. No headings, labels, notes, JSON, tags, markdown, or explanations."
+    "Return only the requested output. No headings, labels, notes, JSON, markdown, or explanations."
   ].join("\n");
 }
 
-function storyContext(input: RpPromptInput): string {
-  const { node, storyId, selectedNodeId } = input;
+function metadataBlock(input: RpPromptInput): string {
+  return [
+    `STORY_ID: ${input.storyId ?? "unknown"}`,
+    `NODE_ID: ${input.selectedNodeId ?? "unknown"}`
+  ].join("\n");
+}
+
+function storyContextBlock(node: StoryNodeFields): string {
+  return [
+    "STORY_CONTEXT:",
+    node.context || "(empty)"
+  ].join("\n");
+}
+
+function currentUserTurnBlock(node: StoryNodeFields): string {
+  return [
+    "CURRENT_TURN:",
+    `USER: ${node.userText || "(empty)"}`
+  ].join("\n");
+}
+
+function currentResolvedTurnBlock(node: StoryNodeFields): string {
+  return [
+    "CURRENT_TURN:",
+    `USER: ${node.userText || "(empty)"}`,
+    `NPC: ${node.dialogue || "(empty)"}`
+  ].join("\n");
+}
+
+function previousVisualBlock(node: StoryNodeFields): string {
+  const previousVisual = lastVisualCueFromContext(node.context);
 
   return [
-    `Story id: ${storyId ?? "unknown"}`,
-    `Node id: ${selectedNodeId ?? "unknown"}`,
-    "",
-    "# Context",
-    node.context || "(empty)",
-    "",
-    "# Current user/player text",
-    node.userText || "(empty)",
-    "",
-    "# Existing dialogue / narration",
-    node.dialogue || "(empty)",
-    "",
-    "# Existing visual description",
-    node.visualDescription || "(empty)"
+    "PREVIOUS_VISUAL:",
+    previousVisual || "(empty)"
   ].join("\n");
+}
+
+function lastVisualCueFromContext(context: string): string {
+  const matches = [...context.matchAll(/(?:^|\n)(?:VISUAL_CUE|Visible scene):\s*(.+?)(?=\n[A-Z_ ]+:|\n\n|$)/gis)];
+  const lastMatch = matches.at(-1);
+
+  return lastMatch?.[1]?.replace(/\s+/g, " ").trim() ?? "";
 }
 
 export function buildRpAnswerPrompt(input: RpPromptInput): string {
   return [
-    baseRpInstruction(),
+    rpIdentityInstruction(),
     "",
-    storyContext(input),
+    "RULES:",
+    "- Output NPC_REPLY only.",
+    "- One short VN textbox line is best; never exceed three short lines.",
+    "- Do not write the player.",
+    "- Do not write visual description.",
+    "- Do not add speaker names, role labels, stage directions, camera notes, image-prompt wording, tags, or a future player reply.",
+    "- Do not summarize the scene. Do not continue after NPC_REPLY.",
     "",
-    "# Task",
-    "Generate ONLY the next VN textbox reply to the player's latest text.",
-    "Output style: dialogue only, or one very brief immediate reaction if no NPC can speak.",
-    "Length limit: one sentence or one spoken line is best; maximum three short lines.",
-    "Do not add speaker names, role labels, stage directions, camera notes, image-prompt wording, tags, or a future player reply.",
-    "Do not summarize the scene. Do not continue the conversation after the reply.",
+    metadataBlock(input),
     "",
-    "# Good output examples",
+    storyContextBlock(input.node),
+    "",
+    currentUserTurnBlock(input.node),
+    "",
+    "FINAL TASK:",
+    "Write NPC_REPLY only.",
+    "",
+    "GOOD_OUTPUT_EXAMPLES:",
     "\"Then we should open it before the rain gets worse.\"",
     "She lowers her voice. \"Stay close, and don't touch the glass.\"",
     "",
-    "# Output"
+    "OUTPUT:"
   ].join("\n");
 }
 
 export function buildVisualRepresentationPrompt(input: RpPromptInput): string {
   return [
-    baseRpInstruction(),
+    "You write simple visual cues for anime image tagging.",
     "",
-    storyContext(input),
+    "RULES:",
+    "- Output VISUAL_CUE only.",
+    "- 18-35 words.",
+    "- Literal visible facts only.",
+    "- Mention character count, pose, clothing, setting, props, lighting.",
+    "- No dialogue.",
+    "- No thoughts.",
+    "- No plot lore.",
+    "- No fandom/source names.",
+    "- No Danbooru tags, comma-tag prompt syntax, LoRA syntax, JSON, headings, or markdown.",
+    "- No prose style or dramatic narration.",
     "",
-    "# Task",
-    "Describe ONLY the current visible scene as concrete visual information for image generation.",
-    "Length: 1-2 compact sentences.",
-    "Include visible characters, pose, clothing, expression, environment, lighting, composition, and mood.",
-    "Do not write dialogue, thoughts, plot continuation, consequences, character intent, or VN prose.",
-    "Do not include Danbooru tags, comma-tag prompt syntax, LoRA syntax, JSON, headings, or markdown.",
+    metadataBlock(input),
     "",
-    "# Output"
+    storyContextBlock(input.node),
+    "",
+    previousVisualBlock(input.node),
+    "",
+    currentResolvedTurnBlock(input.node),
+    "",
+    "FINAL TASK:",
+    "Write VISUAL_CUE only.",
+    "",
+    "OUTPUT:"
   ].join("\n");
 }
 
 export function buildAutomaticUserAnswerPrompt(input: RpPromptInput): string {
   return [
-    baseRpInstruction(),
+    rpIdentityInstruction(),
     "",
-    storyContext(input),
+    "RULES:",
+    "- Output USER_REPLY only.",
+    "- One short VN textbox line.",
+    "- Do not write the NPC.",
+    "- Do not write visual description.",
+    "- Do not continue after USER_REPLY.",
     "",
-    "# Task",
-    "Generate one plausible next player/user answer.",
-    "Write only the player/user's next short reply or action.",
-    "Length: one short line.",
-    "Do not include NPC narration.",
-    "Do not continue after the user answer.",
+    metadataBlock(input),
     "",
-    "# Output"
+    storyContextBlock(input.node),
+    "",
+    currentResolvedTurnBlock(input.node),
+    "",
+    "FINAL TASK:",
+    "Write USER_REPLY only.",
+    "",
+    "OUTPUT:"
   ].join("\n");
 }
 
@@ -134,12 +194,12 @@ function stripProtocolNoise(text: string): string {
   return text
     .replace(/<\/?s>/gi, "")
     .replace(/<\/?(?:assistant|user|system)>/gi, "")
-    .replace(/^\s*(?:#+\s*)?(?:output|answer|assistant|ai|bot|narrator|scene|dialogue|response)\s*:\s*/i, "")
+    .replace(/^\s*(?:#+\s*)?(?:output|answer|assistant|ai|bot|narrator|scene|dialogue|response|npc_reply|user_reply|visual_cue)\s*:\s*/i, "")
     .trim();
 }
 
 function cleanLines(text: string): string[] {
-  const blockedSpeaker = /^(?:user|player|{{user}}|system|assistant|visual|danbooru|tags?|prompt|image prompt)\s*:/i;
+  const blockedSpeaker = /^(?:user|player|{{user}}|system|assistant|visual|visual_cue|danbooru|tags?|prompt|image prompt)\s*:/i;
 
   return stripProtocolNoise(text)
     .split(/\r?\n/)
@@ -153,7 +213,7 @@ export function cleanDialogueOutput(text: string): string {
     .map((line) =>
       line
         .replace(/^[-*•]\s*/, "")
-        .replace(/^\s*(?:npc|character|speaker)\s*:\s*/i, "")
+        .replace(/^\s*(?:npc|npc_reply|character|speaker)\s*:\s*/i, "")
         .trim()
     )
     .filter(Boolean)
@@ -165,6 +225,7 @@ export function cleanDialogueOutput(text: string): string {
 export function cleanVisualDescriptionOutput(text: string): string {
   const compact = cleanLines(text)
     .join(" ")
+    .replace(/^\s*[-*•]\s*/, "")
     .replace(/\s+/g, " ")
     .trim();
 

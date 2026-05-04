@@ -217,6 +217,7 @@ export function fieldListForTab(tab: string): StoryNodeFieldKey[] {
     case "Dialogue":
       return ["dialogue"];
     case "Visual Description":
+    case "Tagger-Safe Visual Cue":
       return ["visualDescription"];
     case "Resolver Text":
       return ["resolverText"];

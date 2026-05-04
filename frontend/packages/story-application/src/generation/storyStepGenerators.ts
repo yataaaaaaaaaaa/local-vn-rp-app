@@ -190,10 +190,7 @@ export function generateResolverTextStep(input: {
 }): WorkflowGenerationResult<StoryWorkflowPayload> {
   return {
     value: {
-      resolverText:
-        input.document.visualDescription ||
-        input.document.dialogue ||
-        input.document.context
+      resolverText: input.document.visualDescription.trim()
     }
   };
 }
@@ -212,12 +209,23 @@ export async function generateDanbotStep(input: {
   document: StoryNodeFields;
   context: StoryStepGenerationContext;
 }): Promise<WorkflowGenerationResult<StoryWorkflowPayload>> {
+  const sceneText = (
+    input.document.resolverText || input.document.visualDescription
+  ).trim();
+
+  if (!sceneText) {
+    return {
+      value: {
+        danbotTags: "",
+        positivePrompt: input.document.selectedTags.trim()
+      },
+      warnings: ["No tagger-safe visual cue available for DanBot."]
+    };
+  }
+
   const result = await input.context.backend.generateDanbotTags(
     {
-      scene_text:
-        input.document.visualDescription ||
-        input.document.dialogue ||
-        input.document.context,
+      scene_text: sceneText,
       max_tags: input.context.config.danbot.max_tags,
       model_path: input.context.config.danbot.model_path || undefined
     },

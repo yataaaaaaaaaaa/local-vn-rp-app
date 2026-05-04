@@ -299,12 +299,17 @@ function unchanged(state: StorySessionState): BranchCommandResult {
 }
 
 function buildChildContext(fields: StoryNodeFields): string {
-  return [
-    fields.context,
-    fields.userText ? `Player: ${fields.userText}` : "",
-    fields.dialogue,
-    fields.visualDescription ? `Visible scene: ${fields.visualDescription}` : ""
+  const previousTurn = [
+    "PREVIOUS_TURN:",
+    fields.userText ? `USER: ${fields.userText}` : "",
+    fields.dialogue ? `NPC: ${fields.dialogue}` : "",
+    fields.visualDescription ? `VISUAL_CUE: ${fields.visualDescription}` : ""
   ]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join("\n");
+
+  return [fields.context, previousTurn]
     .map((part) => part.trim())
     .filter(Boolean)
     .join("\n\n");

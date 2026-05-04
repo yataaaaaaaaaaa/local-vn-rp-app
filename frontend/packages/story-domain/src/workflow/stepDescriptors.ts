@@ -69,7 +69,7 @@ export function labelForStoryWorkflowStep(stepId: StoryWorkflowStepId): string {
     case "dialogue":
       return "Dialogue";
     case "visualDescription":
-      return "Visual Description";
+      return "Tagger-Safe Visual Cue";
     case "resolverText":
       return "Resolver Text";
     case "selectedTags":
