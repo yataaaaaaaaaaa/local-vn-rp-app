@@ -22,11 +22,13 @@ from runtime_wrapper_test import (
 class QuotedOutputBackend(FakeAnythingBackend):
     def submit_llm(self, request: FakeRequest) -> FakeJob:
         self.requests.append(request)
-        return FakeJob([
-            FakeEvent("started"),
-            FakeEvent("text_delta", text='hello "quoted" output\nnext line'),
-            FakeEvent("text_done"),
-        ])
+        return FakeJob(
+            [
+                FakeEvent("started"),
+                FakeEvent("text_delta", text='hello "quoted" output\nnext line'),
+                FakeEvent("text_done"),
+            ]
+        )
 
 
 def quoted_output_api_loader() -> RuntimeApi:
@@ -97,9 +99,44 @@ class PromptLoggingTest(unittest.TestCase):
             self.assertEqual(record["kind"], "diffusion")
             self.assertEqual(record["model"]["path"], "D:/models/image.safetensors")
             self.assertEqual(record["input"]["prompt"], "best quality, exact positive")
-            self.assertEqual(record["input"]["negative_prompt"], "lowres, exact negative")
+            self.assertEqual(
+                record["input"]["negative_prompt"], "lowres, exact negative"
+            )
             self.assertEqual(record["output"]["image_path"], output_path)
             self.assertEqual(record["output"]["seed"], 123)
+            self.assertIsNone(record["error"])
+
+    def test_danbot_generation_is_appended_as_jsonl(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "generation.log.jsonl"
+            wrapper = BackendRuntimeWrapper(
+                api_loader=fake_api_loader,
+                prompt_log_path=log_path,
+            )
+            wrapper.load_danbooru_tagger({"model_path": "D:/models/DanbotNL"})
+            wrapper.generate_danbooru_tags(
+                {
+                    "scene_text": "cat smiles in the archive",
+                    "max_tags": 5,
+                    "aspect_ratio": "landscape",
+                    "rating": "sensitive",
+                    "translate_mode": "exact",
+                    "length": "very_short",
+                }
+            )
+
+            lines = log_path.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(lines), 1)
+            record = json.loads(lines[0])
+            self.assertEqual(record["event"], "generation.completed")
+            self.assertEqual(record["kind"], "danbot")
+            self.assertEqual(record["model"]["path"], "D:/models/DanbotNL")
+            self.assertEqual(record["parameters"]["max_tags"], 5)
+            self.assertEqual(record["parameters"]["aspect_ratio"], "landscape")
+            self.assertEqual(record["input"]["scene_text"], "cat smiles in the archive")
+            self.assertEqual(record["output"]["tags"], ["cat", "smile"])
+            self.assertEqual(record["output"]["prompt"], "cat, smile")
+            self.assertEqual(record["output"]["warnings"], [])
             self.assertIsNone(record["error"])
 
 

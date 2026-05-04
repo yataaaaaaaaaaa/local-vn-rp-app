@@ -28,6 +28,11 @@ import {
   createImageId,
   createImageRefPayload
 } from "./imageOutput";
+import { generateVisualPromptPlan } from "./visualPromptPlanner";
+import {
+  dedupeTags,
+  parseVisualPromptPlan
+} from "./visualPromptProtocol";
 
 export interface StoryStepGenerationContext {
   backend: StoryGenerationBackend;
@@ -49,7 +54,9 @@ export type StoryWorkflowStep = WorkflowStepDefinition<
 export type StoryWorkflowStepGenerator = (input: {
   document: StoryNodeFields;
   context: StoryStepGenerationContext;
-}) => Promise<WorkflowGenerationResult<StoryWorkflowPayload>> | WorkflowGenerationResult<StoryWorkflowPayload>;
+}) =>
+  | Promise<WorkflowGenerationResult<StoryWorkflowPayload>>
+  | WorkflowGenerationResult<StoryWorkflowPayload>;
 
 export type StoryWorkflowStepGenerators = Partial<
   Record<StoryWorkflowStepId, StoryWorkflowStepGenerator>
@@ -79,7 +86,8 @@ export function createStoryWorkflowSteps(
   return descriptors.map((descriptor) => ({
     id: descriptor.id,
     label: descriptor.label,
-    mode: (modes[descriptor.id] ?? defaultStoryWorkflowModes[descriptor.id]) as WorkflowStepMode,
+    mode: (modes[descriptor.id] ??
+      defaultStoryWorkflowModes[descriptor.id]) as WorkflowStepMode,
     generate: generators[descriptor.id],
     read: descriptor.read,
     write: descriptor.write,
@@ -193,17 +201,38 @@ export async function generateVisualDescriptionStep(input: {
   return {
     value: {
       visualDescription: text,
-      resolverText: text
+      resolverText: ""
     }
   };
 }
 
-export function generateResolverTextStep(input: {
+export async function generateResolverTextStep(input: {
   document: StoryNodeFields;
-}): WorkflowGenerationResult<StoryWorkflowPayload> {
+  context: StoryStepGenerationContext;
+}): Promise<WorkflowGenerationResult<StoryWorkflowPayload>> {
+  const visualDescription = input.document.visualDescription.trim();
+
+  if (!visualDescription) {
+    return {
+      value: {
+        resolverText: ""
+      },
+      warnings: ["No visual description available for resolver planning."]
+    };
+  }
+
+  const resolverText = await generateVisualPromptPlan({
+    backend: input.context.backend,
+    config: input.context.config,
+    node: input.document,
+    storyId: input.context.storyId,
+    selectedNodeId: input.context.selectedNodeId,
+    abortSignal: input.context.abortSignal
+  });
+
   return {
     value: {
-      resolverText: input.document.visualDescription.trim()
+      resolverText
     }
   };
 }
@@ -222,11 +251,10 @@ export async function generateDanbotStep(input: {
   document: StoryNodeFields;
   context: StoryStepGenerationContext;
 }): Promise<WorkflowGenerationResult<StoryWorkflowPayload>> {
-  const sceneText = (
-    input.document.resolverText || input.document.visualDescription
-  ).trim();
+  const resolverText = input.document.resolverText.trim();
+  const fallbackText = input.document.visualDescription.trim();
 
-  if (!sceneText) {
+  if (!resolverText && !fallbackText) {
     return {
       value: {
         danbotTags: "",
@@ -236,21 +264,54 @@ export async function generateDanbotStep(input: {
     };
   }
 
-  const result = await input.context.backend.generateDanbotTags(
-    {
-      scene_text: sceneText,
-      max_tags: input.context.config.danbot.max_tags,
-      model_path: input.context.config.danbot.model_path || undefined
-    },
-    { signal: input.context.abortSignal }
-  );
+  const plan = resolverText
+    ? parseVisualPromptPlan(resolverText)
+    : {
+      fixedTags: [],
+      rawDanbotDescriptions: [fallbackText]
+    };
+
+  const rawDescriptions = plan.rawDanbotDescriptions.length
+    ? plan.rawDanbotDescriptions
+    : [fallbackText];
+
+  const allDanbotTags: string[] = [];
+  const warnings: string[] = [];
+
+  for (const rawDescription of rawDescriptions) {
+    const text = rawDescription.trim();
+
+    if (!text) {
+      continue;
+    }
+
+    const result = await input.context.backend.generateDanbotTags(
+      {
+        scene_text: text,
+        max_tags: input.context.config.danbot.max_tags,
+        model_path: input.context.config.danbot.model_path || undefined
+      },
+      { signal: input.context.abortSignal }
+    );
+
+    allDanbotTags.push(...result.tags);
+    warnings.push(...result.warnings);
+  }
+
+  const manuallySelectedTags = splitPromptTags(input.document.selectedTags);
+
+  const positiveTags = dedupeTags([
+    ...manuallySelectedTags,
+    ...plan.fixedTags,
+    ...allDanbotTags
+  ]);
 
   return {
     value: {
-      danbotTags: result.tags.join(", "),
-      positivePrompt: result.prompt
+      danbotTags: dedupeTags(allDanbotTags).join(", "),
+      positivePrompt: positiveTags.join(", ")
     },
-    warnings: result.warnings
+    warnings
   };
 }
 
@@ -319,4 +380,11 @@ export function generateNextSceneStep(): WorkflowGenerationResult<StoryWorkflowP
 
 export function isStoryWorkflowStepId(value: string): value is StoryWorkflowStepId {
   return (storyWorkflowStepIds as readonly string[]).includes(value);
+}
+
+function splitPromptTags(text: string): string[] {
+  return text
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
 }

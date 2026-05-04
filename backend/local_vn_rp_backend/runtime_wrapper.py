@@ -309,6 +309,7 @@ class BackendRuntimeWrapper:
 
     def generate_danbooru_tags(self, request: JsonBody) -> JsonBody:
         job_id = _job_id("danbot")
+        started = time.monotonic()
         with self._lock:
             settings = dict(self._danbot_settings)
         path = _required_str(
@@ -318,17 +319,28 @@ class BackendRuntimeWrapper:
             or request.get("path"),
             "danbot path",
         )
+        scene_text = str(request.get("scene_text") or request.get("text") or "")
+        aspect_ratio = str(request.get("aspect_ratio", "square"))
+        rating = str(request.get("rating", "general"))
+        length = str(request.get("length") or request.get("translate_length") or "short")
+        translate_mode = str(request.get("translate_mode", "exact"))
+        max_tags = int(request.get("max_tags", 80))
+        parameters: JsonBody = {
+            "aspect_ratio": aspect_ratio,
+            "rating": rating,
+            "length": length,
+            "translate_mode": translate_mode,
+            "max_tags": max_tags,
+        }
         api = self._get_api()
         backend = self._ensure_backend()
         danbot_request = api.DanbotNLRequest(
-            text=str(request.get("scene_text") or request.get("text") or ""),
+            text=scene_text,
             path=path,
-            aspect_ratio=str(request.get("aspect_ratio", "square")),
-            rating=str(request.get("rating", "general")),
-            length=str(
-                request.get("length") or request.get("translate_length") or "short"
-            ),
-            translate_mode=str(request.get("translate_mode", "exact")),
+            aspect_ratio=aspect_ratio,
+            rating=rating,
+            length=length,
+            translate_mode=translate_mode,
         )
         self._mark_started(job_id, "danbot")
         text_parts: list[str] = []
@@ -338,15 +350,37 @@ class BackendRuntimeWrapper:
                 job.stream(), job_id, "danbot", text_parts
             )
             prompt = _join_danbot_text_parts(text_parts)
-            tags = _split_prompt_tags(prompt, int(request.get("max_tags", 80)))
+            tags = _split_prompt_tags(prompt, max_tags)
+            warnings = (
+                [] if terminal_event != "aborted" else ["DanBot job was aborted."]
+            )
             result = {
                 "tags": tags,
                 "prompt": ", ".join(tags) if tags else prompt,
                 "model_path": path,
-                "warnings": (
-                    [] if terminal_event != "aborted" else ["DanBot job was aborted."]
-                ),
+                "warnings": warnings,
             }
+            total_ms = int((time.monotonic() - started) * 1000)
+            self._log_generation(
+                GenerationLogEntry(
+                    event=(
+                        "generation.cancelled"
+                        if terminal_event == "aborted"
+                        else "generation.completed"
+                    ),
+                    kind="danbot",
+                    job_id=job_id,
+                    model_path=path,
+                    parameters=parameters,
+                    input={"scene_text": scene_text},
+                    output={
+                        "tags": result["tags"],
+                        "prompt": result["prompt"],
+                        "warnings": result["warnings"],
+                    },
+                    timing={"total_ms": total_ms},
+                )
+            )
             self.event_bus.publish(
                 {
                     "type": "generation_completed",
@@ -357,6 +391,21 @@ class BackendRuntimeWrapper:
             )
             return result
         except Exception as exc:
+            total_ms = int((time.monotonic() - started) * 1000)
+            self._log_generation(
+                GenerationLogEntry(
+                    event="generation.failed",
+                    kind="danbot",
+                    job_id=job_id,
+                    model_path=path,
+                    parameters=parameters,
+                    input={"scene_text": scene_text},
+                    output=None,
+                    timing={"total_ms": total_ms},
+                    error=error_record(exc),
+                    level="error",
+                )
+            )
             self._mark_failed(job_id, "danbot", exc)
             raise
         finally:
