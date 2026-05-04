@@ -27,11 +27,11 @@ export function createDefaultBackendRuntimeConfig(overrides: BackendRuntimeConfi
       startup_timeout_seconds: 90,
       timeout_seconds: 120,
       max_tokens: 96,
-      temperature: 0.62,
-      top_p: 0.86,
+      temperature: 0.7,
+      top_p: 1,
       top_k: 40,
       min_p: 0.05,
-      repeat_penalty: 1.12
+      repeat_penalty: 1
     },
     image: {
       backend: "diffusers",

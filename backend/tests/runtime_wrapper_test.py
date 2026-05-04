@@ -101,6 +101,26 @@ class RuntimeWrapperTest(unittest.TestCase):
         self.assertEqual(backend.config.kwargs["llama_server_args"], ("--ctx-size", "4096", "--n-gpu-layers", "-1"))
         self.assertEqual(backend.requests[-1].kwargs["model_path"], "D:/models/test.gguf")
 
+    def test_llm_generation_applies_mistral_inst_prompt_format(self) -> None:
+        wrapper = BackendRuntimeWrapper(api_loader=fake_api_loader)
+        wrapper.load_llm({"model_path": "D:/models/test.gguf", "prompt_format": "mistral_inst"})
+        wrapper.generate_llm({"prompt": "Return one line.", "max_tokens": 8})
+        backend = FakeAnythingBackend.instances[-1]
+        self.assertEqual(
+            backend.requests[-1].kwargs["prompt"],
+            "[INST] Return one line. [/INST]",
+        )
+
+    def test_llm_generation_does_not_double_wrap_mistral_inst_prompt(self) -> None:
+        wrapper = BackendRuntimeWrapper(api_loader=fake_api_loader)
+        wrapper.load_llm({"model_path": "D:/models/test.gguf", "prompt_format": "mistral_inst"})
+        wrapper.generate_llm({"prompt": "[INST] Already wrapped. [/INST]", "max_tokens": 8})
+        backend = FakeAnythingBackend.instances[-1]
+        self.assertEqual(
+            backend.requests[-1].kwargs["prompt"],
+            "[INST] Already wrapped. [/INST]",
+        )
+
     def test_danbot_generation_delegates_and_deduplicates_tags(self) -> None:
         wrapper = BackendRuntimeWrapper(api_loader=fake_api_loader)
         wrapper.load_danbooru_tagger({"model_path": "D:/models/DanbotNL"})

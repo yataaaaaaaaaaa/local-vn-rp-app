@@ -10,6 +10,9 @@ export function migrateBackendRuntimeConfig(raw: unknown, launcher?: Partial<Bac
   }
 
   const partial = raw as BackendRuntimeConfigPatch;
+  const llmPatch = upgradeLegacyForgottenSafewordPreset(
+    stripRuntimeOwnedLlmSettings(partial.llm)
+  );
   return createDefaultBackendRuntimeConfig({
     ...partial,
     backend: {
@@ -18,16 +21,16 @@ export function migrateBackendRuntimeConfig(raw: unknown, launcher?: Partial<Bac
     },
     llm: {
       ...launcherPatch.llm,
-      ...stripRuntimeOwnedLlmSettings(partial.llm),
-      context_size: positiveNumber(partial.llm?.context_size, defaults.llm.context_size),
-      startup_timeout_seconds: positiveNumber(partial.llm?.startup_timeout_seconds, defaults.llm.startup_timeout_seconds),
-      timeout_seconds: positiveNumber(partial.llm?.timeout_seconds, defaults.llm.timeout_seconds),
-      max_tokens: positiveNumber(partial.llm?.max_tokens, defaults.llm.max_tokens),
-      temperature: positiveNumber(partial.llm?.temperature, defaults.llm.temperature),
-      top_p: optionalPositiveNumber(partial.llm?.top_p, defaults.llm.top_p),
-      top_k: optionalPositiveNumber(partial.llm?.top_k, defaults.llm.top_k),
-      min_p: optionalPositiveNumber(partial.llm?.min_p, defaults.llm.min_p),
-      repeat_penalty: optionalPositiveNumber(partial.llm?.repeat_penalty, defaults.llm.repeat_penalty)
+      ...llmPatch,
+      context_size: positiveNumber(llmPatch?.context_size, defaults.llm.context_size),
+      startup_timeout_seconds: positiveNumber(llmPatch?.startup_timeout_seconds, defaults.llm.startup_timeout_seconds),
+      timeout_seconds: positiveNumber(llmPatch?.timeout_seconds, defaults.llm.timeout_seconds),
+      max_tokens: positiveNumber(llmPatch?.max_tokens, defaults.llm.max_tokens),
+      temperature: positiveNumber(llmPatch?.temperature, defaults.llm.temperature),
+      top_p: optionalPositiveNumber(llmPatch?.top_p, defaults.llm.top_p),
+      top_k: optionalPositiveNumber(llmPatch?.top_k, defaults.llm.top_k),
+      min_p: optionalPositiveNumber(llmPatch?.min_p, defaults.llm.min_p),
+      repeat_penalty: optionalPositiveNumber(llmPatch?.repeat_penalty, defaults.llm.repeat_penalty)
     },
     image: {
       ...partial.image,
@@ -91,6 +94,36 @@ function stripRuntimeOwnedLlmSettings(value: BackendRuntimeConfigPatch["llm"]): 
     llama_server_port?: unknown;
   };
   return clean;
+}
+
+function upgradeLegacyForgottenSafewordPreset(
+  value: Partial<BackendRuntimeConfig["llm"]> | undefined
+): Partial<BackendRuntimeConfig["llm"]> | undefined {
+  if (!value) {
+    return value;
+  }
+
+  const normalizedPath = value?.model_path?.replaceAll("\\", "/") ?? "";
+  if (!/Forgotten-Safeword-12B-v4\.0.*\.gguf$/i.test(normalizedPath)) {
+    return value;
+  }
+
+  const hasLegacySampler =
+    Number(value.temperature) === 0.62 &&
+    Number(value.top_p) === 0.86 &&
+    Number(value.repeat_penalty) === 1.12;
+
+  if (!hasLegacySampler) {
+    return value;
+  }
+
+  return {
+    ...value,
+    prompt_format: value.prompt_format || "mistral_inst",
+    temperature: 0.7,
+    top_p: 1,
+    repeat_penalty: 1
+  };
 }
 
 function stringValue(value: unknown, fallback: string): string {

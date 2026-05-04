@@ -5,36 +5,24 @@ export const RP_NOVEL_PRESET: Partial<BackendRuntimeConfig["llm"]> = {
   prompt_format: "mistral_inst",
   context_size: 8192,
   max_tokens: 96,
-  temperature: 0.62,
-  top_p: 0.86,
+  temperature: 0.7,
+  top_p: 1,
   top_k: 40,
   min_p: 0.05,
-  repeat_penalty: 1.12
+  repeat_penalty: 1
 };
 
 export const RP_NOVEL_STOP = [
+  "</s>",
   "\nUser:",
   "\nPlayer:",
   "\n{{user}}:",
-  "\nAssistant:",
-  "\nSystem:",
-  "\nNarrator:",
   "\nUSER:",
-  "\nPLAYER:",
-  "\n# Scene",
-  "\n# Visual",
-  "\nScene description:",
-  "\nVisual description:",
-  "\nImage prompt:",
-  "\nDanbooru:"
+  "\nPLAYER:"
 ];
 
 export const RP_DIALOGUE_STOP = [
-  ...RP_NOVEL_STOP,
-  "\nVisual:",
-  "\nDescription:",
-  "\nTags:",
-  "\nPrompt:"
+  ...RP_NOVEL_STOP
 ];
 
 export type RpPromptInput = {
@@ -52,13 +40,6 @@ function rpIdentityInstruction(): string {
   ].join("\n");
 }
 
-function metadataBlock(input: RpPromptInput): string {
-  return [
-    `STORY_ID: ${input.storyId ?? "unknown"}`,
-    `NODE_ID: ${input.selectedNodeId ?? "unknown"}`
-  ].join("\n");
-}
-
 function storyContextBlock(node: StoryNodeFields): string {
   return [
     "STORY_CONTEXT:",
@@ -68,18 +49,25 @@ function storyContextBlock(node: StoryNodeFields): string {
 
 function visualContextBlock(node: StoryNodeFields): string {
   return [
-    "VISIBLE_SCENE_CONTEXT:",
-    compactVisibleContext(node.context) || "(empty)"
+    "STORY_AND_CHARACTER_CONTEXT:",
+    compactVisualContext(node.context) || "(empty)"
   ].join("\n");
 }
 
-function compactVisibleContext(context: string): string {
-  const firstParagraph = context
+function compactVisualContext(context: string): string {
+  const paragraphs = context
     .split(/\n\s*\n/g)
     .map((part) => part.replace(/\s+/g, " ").trim())
-    .find(Boolean) ?? "";
+    .filter(Boolean);
 
-  return firstParagraph.slice(0, 700).trim();
+  const useful = paragraphs.filter((part) =>
+    /\b(?:user|player|npc|woman|girl|man|character|wearing|clothing|outfit|hair|eyes?|pose|setting|scene|scenario|previous_turn|visual_cue|visible scene)\b/i.test(part)
+  );
+
+  return (useful.length ? useful : paragraphs)
+    .join("\n")
+    .slice(0, 1800)
+    .trim();
 }
 
 function currentUserTurnBlock(node: StoryNodeFields): string {
@@ -119,13 +107,17 @@ export function buildRpAnswerPrompt(input: RpPromptInput): string {
     "",
     "RULES:",
     "- Output NPC_REPLY only.",
-    "- One short VN textbox line is best; never exceed three short lines.",
+    "- One or two complete VN textbox sentences are best; never exceed three short lines.",
+    "- End with complete terminal punctuation. Do not trail off mid-sentence.",
     "- Do not write the player.",
     "- Do not write visual description.",
-    "- Do not add speaker names, role labels, stage directions, camera notes, image-prompt wording, tags, or a future player reply.",
+    "- NPC spoken dialogue may use first person.",
+    "- Any narration or action prose must be third person, using the NPC name or pronouns; never write first-person narration.",
+    "- Do not write first-person action like 'I lean closer' unless it is inside quoted spoken dialogue.",
+    "- If mixing narration and spoken dialogue, put spoken dialogue in quotes so first-person words are clearly speech.",
+    "- Do not use asterisks for action text.",
+    "- Do not add speaker names, role labels, bracketed stage directions, camera notes, image-prompt wording, tags, or a future player reply.",
     "- Do not summarize the scene. Do not continue after NPC_REPLY.",
-    "",
-    metadataBlock(input),
     "",
     storyContextBlock(input.node),
     "",
@@ -143,17 +135,16 @@ export function buildVisualRepresentationPrompt(input: RpPromptInput): string {
     "You write simple visual cues for anime image tagging.",
     "",
     "RULES:",
-    "- Output one compact VISUAL_CUE sentence only.",
-    "- Under 35 words.",
+    "- Output a compact VISUAL_CUE only.",
+    "- One or two short sentences.",
     "- Literal visible facts only.",
     "- Mention character count, pose, clothing, setting, props, lighting.",
+    "- Preserve stable character identity and appearance from context; infer known visible traits from named characters when needed.",
     "- No dialogue or quoted speech.",
     "- No thoughts or emotions that are not visible on the face/body.",
     "- No plot lore, source/fandom names, measurements, word counts, or checklists.",
     "- No Danbooru tags, comma-tag prompt syntax, LoRA syntax, JSON, headings, or markdown.",
     "- No prose style or dramatic narration.",
-    "",
-    metadataBlock(input),
     "",
     visualContextBlock(input.node),
     "",
@@ -162,7 +153,7 @@ export function buildVisualRepresentationPrompt(input: RpPromptInput): string {
     currentResolvedTurnBlock(input.node),
     "",
     "FINAL TASK:",
-    "Write one literal VISUAL_CUE sentence only.",
+    "Write the literal VISUAL_CUE only.",
     "",
     "OUTPUT ONLY THE VISUAL_CUE TEXT BELOW:"
   ].join("\n");
@@ -178,8 +169,6 @@ export function buildAutomaticUserAnswerPrompt(input: RpPromptInput): string {
     "- Do not write the NPC.",
     "- Do not write visual description.",
     "- Do not continue after USER_REPLY.",
-    "",
-    metadataBlock(input),
     "",
     storyContextBlock(input.node),
     "",
@@ -215,13 +204,14 @@ export function cleanDialogueOutput(text: string): string {
     .map((line) =>
       line
         .replace(/^[-*•]\s*/, "")
+        .replace(/\*/g, "")
         .replace(/^\s*(?:npc|npc_reply|character|speaker)\s*:\s*/i, "")
         .trim()
     )
     .filter(Boolean)
     .slice(0, 3);
 
-  return lines.join("\n").trim();
+  return trimDanglingSentence(lines.join("\n").trim());
 }
 
 export function cleanVisualDescriptionOutput(text: string): string {
@@ -235,9 +225,27 @@ export function cleanVisualDescriptionOutput(text: string): string {
     .trim();
 
   const sentences = compact.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [compact];
-  return sentences[0]?.trim() ?? "";
+  return sentences
+    .slice(0, 2)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean)
+    .join(" ");
 }
 
 export function cleanSingleLineOutput(text: string): string {
   return cleanLines(text)[0]?.trim() ?? "";
+}
+
+function trimDanglingSentence(text: string): string {
+  if (!text || /[.!?]"?$/.test(text)) {
+    return closeUnbalancedDoubleQuote(text);
+  }
+
+  const match = text.match(/^([\s\S]*[.!?]"?)(?:\s+[^.!?]*)$/);
+  return closeUnbalancedDoubleQuote(match?.[1]?.trim() || text);
+}
+
+function closeUnbalancedDoubleQuote(text: string): string {
+  const quoteCount = (text.match(/"/g) ?? []).length;
+  return quoteCount % 2 === 1 ? `${text}"` : text;
 }

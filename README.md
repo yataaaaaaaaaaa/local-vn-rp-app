@@ -170,7 +170,7 @@ user action + curated RP context
 
 The first LLM request is explicitly scoped to dialogue/narrative continuation only. It receives story context, character voice notes, recent dialogue, the previous visual state for continuity, and the user's new action. It is instructed not to produce image prompts, Danbooru tags, JSON, LoRA syntax, or a standalone scene description.
 
-The second LLM request is explicitly scoped to visible scene prose only. It receives the same high-signal story/character context, the user action, recent dialogue, the previous visual state, and the exact dialogue output from the first call. It asks for 2-5 sentences of natural-language visual state and keeps character-specific details bound to the right character. It is instructed not to write dialogue, analysis, Danbooru tags, comma-tag prompts, Stable Diffusion syntax, LoRA syntax, JSON, or markdown headings.
+The second LLM request is explicitly scoped to visible scene prose only. It receives the same high-signal story/character context, the user action, recent dialogue, the previous visual state, and the exact dialogue output from the first call. It asks for one or two compact visual-cue sentences and keeps character-specific details bound to the right character. It is instructed not to write dialogue, analysis, Danbooru tags, comma-tag prompts, Stable Diffusion syntax, LoRA syntax, JSON, or markdown headings.
 
 Prompt builders live in:
 

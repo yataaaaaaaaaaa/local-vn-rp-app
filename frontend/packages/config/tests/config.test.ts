@@ -39,4 +39,20 @@ describe("config package", () => {
     expect(migrated.prompts.default_positive_prompt).toBe("cinematic lighting");
     expect(migrated.danbot.max_tags).toBe(12);
   });
+
+  it("upgrades the exact legacy Forgotten-Safeword sampler preset", () => {
+    const migrated = migrateBackendRuntimeConfig({
+      llm: {
+        model_path: "D:/Anything/llm/Forgotten-Safeword-12B-v4.0.Q6_K.gguf",
+        prompt_format: "mistral_inst",
+        temperature: 0.62,
+        top_p: 0.86,
+        repeat_penalty: 1.12
+      }
+    });
+
+    expect(migrated.llm.temperature).toBe(0.7);
+    expect(migrated.llm.top_p).toBe(1);
+    expect(migrated.llm.repeat_penalty).toBe(1);
+  });
 });

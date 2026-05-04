@@ -182,7 +182,11 @@ class BackendRuntimeWrapper:
         )
         api = self._get_api()
         backend = self._ensure_backend()
-        prompt = str(request.get("prompt", ""))
+        raw_prompt = str(request.get("prompt", ""))
+        prompt_format = _optional_str(
+            request.get("prompt_format") or settings.get("prompt_format")
+        )
+        prompt = _format_llm_prompt(raw_prompt, prompt_format)
         max_tokens = int(request.get("max_tokens", 256))
         temperature = float(request.get("temperature", 0.7))
         seed = int(request.get("seed", 0))
@@ -191,6 +195,8 @@ class BackendRuntimeWrapper:
             "temperature": temperature,
             "seed": seed,
         }
+        if prompt_format:
+            parameters["prompt_format"] = prompt_format
         extra = _llm_extra(request)
         if extra:
             parameters["extra"] = extra
@@ -690,6 +696,22 @@ def _llm_extra(request: JsonBody) -> JsonBody:
         if key in request:
             extra[key] = request[key]
     return extra
+
+
+def _format_llm_prompt(prompt: str, prompt_format: str | None) -> str:
+    if not prompt_format:
+        return prompt
+
+    normalized = prompt_format.strip().lower().replace("-", "_")
+    if normalized in {"raw", "none", "completion"}:
+        return prompt
+    if normalized in {"mistral_inst", "mistral", "mistral_v3_tekken_e"}:
+        stripped = prompt.strip()
+        if stripped.startswith("[INST]") or "[/INST]" in stripped:
+            return prompt
+        return f"[INST] {stripped} [/INST]"
+
+    return prompt
 
 
 def _llm_server_args(settings: JsonBody) -> tuple[str, ...]:

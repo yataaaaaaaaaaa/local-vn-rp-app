@@ -143,7 +143,7 @@ export async function generateDialogueStep(input: {
         selectedNodeId: input.context.selectedNodeId
       }),
       {
-        max_tokens: Math.min(input.context.config.llm.max_tokens, 64),
+        max_tokens: Math.min(input.context.config.llm.max_tokens, 96),
         stop: RP_DIALOGUE_STOP
       }
     ),
