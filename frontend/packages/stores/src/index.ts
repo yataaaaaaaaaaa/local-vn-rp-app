@@ -1,4 +1,6 @@
 export * from "./bootstrap";
+export * from "./useActionCompositionCorrectionStore";
+export * from "./useActionCompositionTreeStore";
 export * from "./useBackendClientStore";
 export * from "./useBackendConfigStore";
 export * from "./useLauncherStore";

@@ -1,4 +1,5 @@
 import type { LauncherArgs } from "@local-vn/shared-types";
+import { useActionCompositionTreeStore } from "./useActionCompositionTreeStore";
 import { useBackendClientStore } from "./useBackendClientStore";
 import { useBackendConfigStore } from "./useBackendConfigStore";
 import { useLauncherStore } from "./useLauncherStore";
@@ -19,6 +20,7 @@ export async function bootstrapFrontend(): Promise<void> {
   await useFrontendPreferencesStore.getState().load();
   await useBackendConfigStore.getState().load();
   await useResolverStore.getState().load();
+  await useActionCompositionTreeStore.getState().load();
 
   const config = useBackendConfigStore.getState().config;
   useBackendClientStore.getState().setBaseUrl(config.backend.baseUrl);

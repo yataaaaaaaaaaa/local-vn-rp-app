@@ -1,5 +1,6 @@
 export * from "./AppLayout";
 
+export * from "./ActionCompositionCorrectionDialog";
 export * from "./backend-config/BackendConfigPanel";
 export * from "./danbooru-resolver/DanbooruResolverPanel";
 export * from "./workflow-tabs/LeafStepTabs";

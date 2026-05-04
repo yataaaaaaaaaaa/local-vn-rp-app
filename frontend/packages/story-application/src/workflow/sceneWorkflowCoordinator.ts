@@ -492,6 +492,10 @@ export class SceneWorkflowCoordinator {
       storyId: state.storyId,
       selectedNodeId: nodeId,
       outputImageFile,
+      actionCompositionTree: this.services.actionCompositionTree?.getTree() ?? null,
+      actionCompositionSeed: this.services.actionCompositionTree?.getSeed() ?? 0,
+      onActionCompositionSelectionError:
+        this.services.actionCompositionTree?.reportSelectionIssue,
       now: this.services.now,
       abortSignal
     };

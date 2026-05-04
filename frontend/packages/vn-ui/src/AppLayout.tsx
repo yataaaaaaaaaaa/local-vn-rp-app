@@ -1,3 +1,4 @@
+import { ActionCompositionCorrectionDialog } from "./ActionCompositionCorrectionDialog";
 import { BackendConfigPanel } from "./backend-config/BackendConfigPanel";
 import { DanbooruResolverPanel } from "./danbooru-resolver/DanbooruResolverPanel";
 import { LeafStepTabs } from "./workflow-tabs/LeafStepTabs";
@@ -14,6 +15,7 @@ export function AppLayout() {
       <LeafStepTabs />
       <DanbooruResolverPanel />
       <BackendConfigPanel />
+      <ActionCompositionCorrectionDialog />
     </main>
   );
 }

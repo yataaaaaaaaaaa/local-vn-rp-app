@@ -6,6 +6,7 @@ export * from "./generation/storyStepGenerators";
 export * from "./generation/imageOutput";
 export * from "./generation/generationConfigValidation";
 export * from "./generation/modelLoading";
+export * from "./generation/actionCompositionTree";
 
 export * from "./usecases/editStepField";
 export * from "./usecases/generateStepCandidate";

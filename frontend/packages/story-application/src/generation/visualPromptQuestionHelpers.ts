@@ -2,6 +2,7 @@ import type { BackendRuntimeConfig } from "@local-vn/shared-types";
 import type { StoryNodeFields } from "@local-vn/story-domain";
 
 import type { StoryGenerationBackend } from "../ports";
+import type { ActionCompositionSelectionIssue } from "./actionCompositionTree";
 import { rpNovelLlmRequestConfig } from "./llmRequestConfig";
 import { RP_NOVEL_STOP } from "./rpNovelPrompts";
 import type { VisualPromptPlan } from "./visualPromptProtocol";
@@ -19,6 +20,7 @@ export interface VisualPlannerRuntime {
     selectedNodeId: string | null;
     facts: Record<string, string | boolean | string[]>;
     abortSignal?: AbortSignal;
+    onActionCompositionSelectionError?: (issue: ActionCompositionSelectionIssue) => void;
 }
 
 export async function askTagsFromQuestion(
@@ -108,6 +110,31 @@ export async function addSingleTagChoiceByNumber(
     }
 
     return chosenTag;
+}
+
+export async function chooseNamedChildFromQuestion(
+    runtime: VisualPlannerRuntime,
+    input: {
+        key: string;
+        question: string;
+        choices: string[];
+        example?: string;
+    }
+): Promise<string | null> {
+    const answer = await askRawLlmLine({
+        runtime,
+        question: buildNamedChildChoiceQuestion({
+            question: input.question,
+            choices: input.choices,
+            example: input.example ?? "1"
+        })
+    });
+
+    const chosenIndex = parseOptionalNumberedChoiceAnswer(answer, input.choices.length);
+    const chosenName = chosenIndex === null ? null : input.choices[chosenIndex];
+    runtime.facts[input.key] = chosenName ?? "none";
+
+    return chosenName;
 }
 
 export async function isVisible(
@@ -265,6 +292,25 @@ function buildNumberedTagChoiceQuestion(input: {
     ].join("\n");
 }
 
+function buildNamedChildChoiceQuestion(input: {
+    question: string;
+    choices: string[];
+    example: string;
+}): string {
+    return [
+        input.question,
+        "",
+        "Choose exactly one option by number, or choose 0 if none of these choices fit the scene:",
+        "0. none of these choices",
+        input.choices.map((choice, index) => `${index + 1}. ${choice}`).join("\n"),
+        "",
+        "Answer with the number only.",
+        "Do not output the choice name.",
+        "Example:",
+        input.example
+    ].join("\n");
+}
+
 function buildNaturalYesNoQuestion(input: {
     question: string;
     target: string;
@@ -306,6 +352,30 @@ function parseNumberedChoiceAnswer(answer: string, optionCount: number): number 
     }
 
     const number = Number(match[1]);
+
+    if (!Number.isInteger(number) || number < 1 || number > optionCount) {
+        return null;
+    }
+
+    return number - 1;
+}
+
+function parseOptionalNumberedChoiceAnswer(answer: string, optionCount: number): number | null {
+    if (/\b(?:none|no choice|aucun|aucune)\b/i.test(answer)) {
+        return null;
+    }
+
+    const match = answer.match(/\b(?:option|choice|number|#)?\s*(\d{1,3})\b/i);
+
+    if (!match) {
+        return null;
+    }
+
+    const number = Number(match[1]);
+
+    if (number === 0) {
+        return null;
+    }
 
     if (!Number.isInteger(number) || number < 1 || number > optionCount) {
         return null;

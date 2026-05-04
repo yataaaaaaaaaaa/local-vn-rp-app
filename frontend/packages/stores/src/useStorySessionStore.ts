@@ -29,9 +29,12 @@ import {
 } from "@local-vn/story-infrastructure";
 
 import { backendClientOrThrow } from "./useBackendClientStore";
+import { useActionCompositionCorrectionStore } from "./useActionCompositionCorrectionStore";
+import { useActionCompositionTreeStore } from "./useActionCompositionTreeStore";
 import { useBackendConfigStore } from "./useBackendConfigStore";
 import { useFrontendPreferencesStore } from "./useFrontendPreferencesStore";
 import { useLayoutStore } from "./useLayoutStore";
+import { useResolverStore } from "./useResolverStore";
 
 export type StorySessionState = StorySessionStoreState;
 
@@ -70,6 +73,12 @@ export const storySessionController = new StorySessionController({
     userInputPolicy: {
       shouldAutoGenerateUserText: () =>
         useFrontendPreferencesStore.getState().generateUserAnswerFromLlm
+    },
+    actionCompositionTree: {
+      getTree: () => useActionCompositionTreeStore.getState().tree,
+      getSeed: () => useResolverStore.getState().seed,
+      reportSelectionIssue: (issue) =>
+        useActionCompositionCorrectionStore.getState().open(issue)
     },
     autosave: true
   },

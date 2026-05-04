@@ -30,6 +30,7 @@ export function backendRuntimeConfigFile(): string { return `${configDirectory()
 export function frontendLayoutFile(): string { return `${configDirectory()}/frontend.layout.json`; }
 export function frontendPreferencesFile(): string { return `${configDirectory()}/frontend.preferences.json`; }
 export function resolverConfigFile(): string { return `${configDirectory()}/resolver.config.json`; }
+export function actionCompositionTreeConfigFile(): string { return `${configDirectory()}/action_composition_tree.json`; }
 
 export function storyDirectory(storyId: string): string { return `${storyRoot()}/${safePathSegment(storyId)}`; }
 export function storyFile(storyId: string): string { return `${storyDirectory(storyId)}/story.json`; }

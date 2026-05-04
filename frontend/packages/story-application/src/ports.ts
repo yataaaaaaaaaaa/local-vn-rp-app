@@ -19,6 +19,10 @@ import type {
   StoryWorkflowPayload,
   StoryWorkflowStepId
 } from "@local-vn/story-domain";
+import type {
+  ActionCompositionNode,
+  ActionCompositionSelectionIssue
+} from "./generation/actionCompositionTree";
 
 export interface StoryBackendRequestOptions {
   signal?: AbortSignal;
@@ -66,6 +70,11 @@ export interface StorySessionServices {
   backend: StoryGenerationBackend & StoryModelLoadingBackend & StoryRuntimeControlBackend;
   persistence: StoryPersistencePort;
   userInputPolicy?: StoryUserInputPolicy;
+  actionCompositionTree?: {
+    getTree(): ActionCompositionNode | null;
+    getSeed(): number;
+    reportSelectionIssue(issue: ActionCompositionSelectionIssue): void;
+  };
   autosave?: boolean;
   now?: () => Date;
   onError?: (error: unknown) => void;

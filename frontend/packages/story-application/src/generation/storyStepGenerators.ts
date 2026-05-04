@@ -29,6 +29,10 @@ import {
   createImageRefPayload
 } from "./imageOutput";
 import { generateVisualPromptPlan } from "./visualPromptPlanner";
+import type {
+  ActionCompositionNode,
+  ActionCompositionSelectionIssue
+} from "./actionCompositionTree";
 import {
   dedupeTags,
   parseVisualPromptPlan
@@ -40,6 +44,9 @@ export interface StoryStepGenerationContext {
   storyId: string | null;
   selectedNodeId: string | null;
   outputImageFile?: (storyId: string, imageId: string) => string;
+  actionCompositionTree?: ActionCompositionNode | null;
+  actionCompositionSeed?: number;
+  onActionCompositionSelectionError?: (issue: ActionCompositionSelectionIssue) => void;
   now?: () => Date;
   abortSignal?: AbortSignal;
 }
@@ -227,6 +234,9 @@ export async function generateResolverTextStep(input: {
     node: input.document,
     storyId: input.context.storyId,
     selectedNodeId: input.context.selectedNodeId,
+    actionCompositionTree: input.context.actionCompositionTree,
+    actionCompositionSeed: input.context.actionCompositionSeed,
+    onActionCompositionSelectionError: input.context.onActionCompositionSelectionError,
     abortSignal: input.context.abortSignal
   });
 
