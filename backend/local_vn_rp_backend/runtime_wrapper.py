@@ -12,6 +12,7 @@ from uuid import uuid4
 import re
 
 from .events import EventBus
+from .prompt_logger import PromptLogEntry, PromptLogger
 from .storage_paths import StoragePaths
 
 JsonBody = dict[str, Any]
@@ -76,9 +77,11 @@ class BackendRuntimeWrapper:
         self,
         api_loader: Callable[[], RuntimeApi] = load_runtime_api,
         storage_paths: StoragePaths | None = None,
+        prompt_log_path: str | Path | None = None,
     ) -> None:
         self.event_bus = EventBus()
         self.storage_paths = storage_paths
+        self.prompt_logger = PromptLogger(prompt_log_path)
         self.status = RuntimeStatus()
         self._api_loader = api_loader
         self._api: RuntimeApi | None = None
@@ -99,6 +102,8 @@ class BackendRuntimeWrapper:
         payload: JsonBody = {"ok": True, "backend": "anything-backend-runtime-wrapper"}
         if self.storage_paths is not None:
             payload["storage_paths"] = self.storage_paths.to_dict()
+        if self.prompt_logger.enabled and self.prompt_logger.path is not None:
+            payload["prompt_log_path"] = str(self.prompt_logger.path)
         return payload
 
     def load_llm(self, request: JsonBody) -> JsonBody:
@@ -177,12 +182,25 @@ class BackendRuntimeWrapper:
         )
         api = self._get_api()
         backend = self._ensure_backend()
+        prompt = str(request.get("prompt", ""))
         llama_request = api.LlamaRequest(
-            prompt=str(request.get("prompt", "")),
+            prompt=prompt,
             model_path=model_path,
             max_tokens=int(request.get("max_tokens", 256)),
             temperature=float(request.get("temperature", 0.7)),
             extra=_llm_extra(request),
+        )
+        self._log_prompt(
+            PromptLogEntry(
+                kind="llm",
+                job_id=job_id,
+                model_path=model_path,
+                prompt=prompt,
+                extra={
+                    "max_tokens": int(request.get("max_tokens", 256)),
+                    "temperature": float(request.get("temperature", 0.7)),
+                },
+            )
         )
         self._mark_started(job_id, "llm")
         text_parts: list[str] = []
@@ -292,10 +310,21 @@ class BackendRuntimeWrapper:
         output_path = _required_str(request.get("output_path"), "output_path")
         api = self._get_api()
         backend = self._ensure_backend()
+        prompt = str(request.get("positive_prompt", ""))
+        negative_prompt = str(request.get("negative_prompt", ""))
+        width = int(request.get("width", 1024))
+        height = int(request.get("height", 1024))
+        steps = int(request.get("steps", 28))
+        cfg = float(request.get("cfg_scale", request.get("cfg", 5.5)))
+        seed = int(request.get("seed", 0))
+        sampler_name = _normalize_sampler_name(
+            request.get("sampler", request.get("sampler_name", "euler_ancestral"))
+        )
+        scheduler = str(request.get("scheduler", "simple"))
         diffusion_request = api.DiffusionRequest(
             model_path=model_path,
-            prompt=str(request.get("positive_prompt", "")),
-            negative_prompt=str(request.get("negative_prompt", "")),
+            prompt=prompt,
+            negative_prompt=negative_prompt,
             prompt_lora_dir=str(
                 request.get("lora_root") or settings.get("lora_root", "")
             ),
@@ -303,19 +332,35 @@ class BackendRuntimeWrapper:
                 request.get("embedding_root") or settings.get("embedding_root", "")
             ),
             output_path=output_path,
-            width=int(request.get("width", 1024)),
-            height=int(request.get("height", 1024)),
-            steps=int(request.get("steps", 28)),
-            cfg=float(request.get("cfg_scale", request.get("cfg", 5.5))),
-            seed=int(request.get("seed", 0)),
-            sampler_name=_normalize_sampler_name(
-                request.get("sampler", request.get("sampler_name", "euler_ancestral"))
-            ),
-            scheduler=str(request.get("scheduler", "simple")),
+            width=width,
+            height=height,
+            steps=steps,
+            cfg=cfg,
+            seed=seed,
+            sampler_name=sampler_name,
+            scheduler=scheduler,
+        )
+        self._log_prompt(
+            PromptLogEntry(
+                kind="diffusion",
+                job_id=job_id,
+                model_path=model_path,
+                prompt=prompt,
+                negative_prompt=negative_prompt,
+                extra={
+                    "cfg": cfg,
+                    "height": height,
+                    "output_path": output_path,
+                    "sampler_name": sampler_name,
+                    "scheduler": scheduler,
+                    "seed": seed,
+                    "steps": steps,
+                    "width": width,
+                },
+            )
         )
         self._mark_started(job_id, "image")
         image_path = output_path
-        seed = int(request.get("seed", 0))
         warnings: list[str] = []
         try:
             job = backend.submit_diffusion(diffusion_request)
@@ -424,6 +469,21 @@ class BackendRuntimeWrapper:
         if self._api is None:
             self._api = self._api_loader()
         return self._api
+
+    def _log_prompt(self, entry: PromptLogEntry) -> None:
+        try:
+            self.prompt_logger.log(entry)
+        except OSError as exc:
+            with self._lock:
+                self.status.last_error = f"prompt logging failed: {exc}"
+            self.event_bus.publish(
+                {
+                    "type": "runtime_warning",
+                    "kind": entry.kind,
+                    "job_id": entry.job_id,
+                    "message": f"prompt logging failed: {exc}",
+                }
+            )
 
     def _ensure_backend(self) -> Any:
         api = self._get_api()

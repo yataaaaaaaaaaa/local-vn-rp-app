@@ -24,6 +24,12 @@ class LauncherConfigTest(unittest.TestCase):
         self.assertIn('"--output-root",', source)
         self.assertIn('"{output_root}",', source)
 
+    def test_backend_command_receives_prompt_log_path(self) -> None:
+        source = LAUNCHER_CLI.read_text(encoding="utf-8")
+        self.assertIn('LOCAL_VN_RP_PROMPT_LOG_PATH', source)
+        self.assertIn('f"log_{index}.txt"', source)
+        self.assertIn('"--prompt-log-path",', source)
+        self.assertIn('"{prompt_log_path}",', source)
 
 
     def test_launcher_no_longer_starts_or_configures_llama_server(self) -> None:

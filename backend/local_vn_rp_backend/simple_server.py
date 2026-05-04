@@ -156,11 +156,15 @@ def create_server(
     port: int,
     storage_paths: StoragePaths | None = None,
     wrapper: BackendRuntimeWrapper | None = None,
+    prompt_log_path: str | None = None,
 ) -> BackendHttpServer:
     paths = storage_paths or require_storage_paths()
     server = BackendHttpServer((host, port), BackendRequestHandler)
     server.storage_paths = paths
-    server.wrapper = wrapper or BackendRuntimeWrapper(storage_paths=paths)
+    server.wrapper = wrapper or BackendRuntimeWrapper(
+        storage_paths=paths,
+        prompt_log_path=prompt_log_path,
+    )
     return server
 
 
@@ -172,12 +176,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--app-root", required=True)
     parser.add_argument("--story-root", required=True)
     parser.add_argument("--output-root", required=True)
+    parser.add_argument(
+        "--prompt-log-path",
+        default="",
+        help="Optional text file path where exact LLM and diffusion prompts are appended.",
+    )
     args = parser.parse_args(argv)
     paths = configure_storage_paths(str(args.project_name), str(args.app_root), str(args.story_root), str(args.output_root))
     server = create_server(
         str(args.host),
         int(args.port),
         storage_paths=paths,
+        prompt_log_path=str(args.prompt_log_path) or None,
     )
     try:
         server.serve_forever()

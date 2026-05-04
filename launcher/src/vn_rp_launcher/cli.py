@@ -13,8 +13,22 @@ BACKEND_PORT: int = int(os.environ.get("LOCAL_VN_RP_BACKEND_PORT", "17860"))
 APP_ROOT: str = os.environ.get("LOCAL_VN_RP_APP_ROOT", "D:/Anything/storage/local-vn-rp-app-storage")
 STORY_ROOT: str = os.environ.get("LOCAL_VN_RP_STORY_ROOT", f"{APP_ROOT}/stories")
 OUTPUT_ROOT: str = os.environ.get("LOCAL_VN_RP_OUTPUT_ROOT", f"{APP_ROOT}/outputs")
+PROMPT_LOG_PATH: str = os.environ.get("LOCAL_VN_RP_PROMPT_LOG_PATH", "")
 
 FRONTEND_MODE: str = os.environ.get("LOCAL_VN_RP_FRONTEND_MODE", "electron").strip().lower()
+
+
+def _next_prompt_log_path(app_root: str) -> str:
+    root = Path(app_root)
+    root.mkdir(parents=True, exist_ok=True)
+    index = 1
+    while True:
+        candidate = root / f"log_{index}.txt"
+        try:
+            with candidate.open("x", encoding="utf-8"):
+                return str(candidate)
+        except FileExistsError:
+            index += 1
 
 
 def _ensure_storage_dirs() -> None:
@@ -46,6 +60,7 @@ def _frontend_requirements() -> tuple[object, ...]:
 
 
 _ensure_storage_dirs()
+PROMPT_LOG_PATH = PROMPT_LOG_PATH or _next_prompt_log_path(APP_ROOT)
 
 app = LauncherApp(
     name=PROJECT_NAME,
@@ -57,6 +72,7 @@ app = LauncherApp(
         "app_root": APP_ROOT,
         "story_root": STORY_ROOT,
         "output_root": OUTPUT_ROOT,
+        "prompt_log_path": PROMPT_LOG_PATH,
     },
     services=(
         service(
@@ -79,6 +95,8 @@ app = LauncherApp(
                 "{story_root}",
                 "--output-root",
                 "{output_root}",
+                "--prompt-log-path",
+                "{prompt_log_path}",
             ],
             cwd="backend",
             requires=(
