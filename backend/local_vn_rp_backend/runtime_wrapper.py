@@ -12,7 +12,7 @@ from uuid import uuid4
 import re
 
 from .events import EventBus
-from .prompt_logger import PromptLogEntry, PromptLogger
+from .generation_logger import GenerationLogEntry, GenerationLogger, error_record
 from .storage_paths import StoragePaths
 
 JsonBody = dict[str, Any]
@@ -81,7 +81,7 @@ class BackendRuntimeWrapper:
     ) -> None:
         self.event_bus = EventBus()
         self.storage_paths = storage_paths
-        self.prompt_logger = PromptLogger(prompt_log_path)
+        self.generation_logger = GenerationLogger(prompt_log_path)
         self.status = RuntimeStatus()
         self._api_loader = api_loader
         self._api: RuntimeApi | None = None
@@ -102,8 +102,8 @@ class BackendRuntimeWrapper:
         payload: JsonBody = {"ok": True, "backend": "anything-backend-runtime-wrapper"}
         if self.storage_paths is not None:
             payload["storage_paths"] = self.storage_paths.to_dict()
-        if self.prompt_logger.enabled and self.prompt_logger.path is not None:
-            payload["prompt_log_path"] = str(self.prompt_logger.path)
+        if self.generation_logger.enabled and self.generation_logger.path is not None:
+            payload["prompt_log_path"] = str(self.generation_logger.path)
         return payload
 
     def load_llm(self, request: JsonBody) -> JsonBody:
@@ -183,24 +183,23 @@ class BackendRuntimeWrapper:
         api = self._get_api()
         backend = self._ensure_backend()
         prompt = str(request.get("prompt", ""))
+        max_tokens = int(request.get("max_tokens", 256))
+        temperature = float(request.get("temperature", 0.7))
+        seed = int(request.get("seed", 0))
+        parameters: JsonBody = {
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "seed": seed,
+        }
+        extra = _llm_extra(request)
+        if extra:
+            parameters["extra"] = extra
         llama_request = api.LlamaRequest(
             prompt=prompt,
             model_path=model_path,
-            max_tokens=int(request.get("max_tokens", 256)),
-            temperature=float(request.get("temperature", 0.7)),
-            extra=_llm_extra(request),
-        )
-        self._log_prompt(
-            PromptLogEntry(
-                kind="llm",
-                job_id=job_id,
-                model_path=model_path,
-                prompt=prompt,
-                extra={
-                    "max_tokens": int(request.get("max_tokens", 256)),
-                    "temperature": float(request.get("temperature", 0.7)),
-                },
-            )
+            max_tokens=max_tokens,
+            temperature=temperature,
+            extra=extra,
         )
         self._mark_started(job_id, "llm")
         text_parts: list[str] = []
@@ -211,18 +210,57 @@ class BackendRuntimeWrapper:
             )
             generation_ms = int((time.monotonic() - started) * 1000)
             if terminal_event == "aborted":
-                return {
+                result = {
                     "text": "".join(text_parts),
                     "finish_reason": "cancelled",
-                    "seed": int(request.get("seed", 0)),
+                    "seed": seed,
                     "timing": {"prompt_ms": 0, "generation_ms": generation_ms},
                 }
+                self._log_generation(
+                    GenerationLogEntry(
+                        event="generation.cancelled",
+                        kind="llm",
+                        job_id=job_id,
+                        model_path=model_path,
+                        parameters=parameters,
+                        input={"prompt": prompt},
+                        output={
+                            "text": result["text"],
+                            "finish_reason": result["finish_reason"],
+                        },
+                        timing={
+                            "prompt_ms": 0,
+                            "generation_ms": generation_ms,
+                            "total_ms": generation_ms,
+                        },
+                    )
+                )
+                return result
             result = {
                 "text": "".join(text_parts),
                 "finish_reason": "stop",
-                "seed": int(request.get("seed", 0)),
+                "seed": seed,
                 "timing": {"prompt_ms": 0, "generation_ms": generation_ms},
             }
+            self._log_generation(
+                GenerationLogEntry(
+                    event="generation.completed",
+                    kind="llm",
+                    job_id=job_id,
+                    model_path=model_path,
+                    parameters=parameters,
+                    input={"prompt": prompt},
+                    output={
+                        "text": result["text"],
+                        "finish_reason": result["finish_reason"],
+                    },
+                    timing={
+                        "prompt_ms": 0,
+                        "generation_ms": generation_ms,
+                        "total_ms": generation_ms,
+                    },
+                )
+            )
             self.event_bus.publish(
                 {
                     "type": "generation_completed",
@@ -233,6 +271,25 @@ class BackendRuntimeWrapper:
             )
             return result
         except Exception as exc:
+            generation_ms = int((time.monotonic() - started) * 1000)
+            self._log_generation(
+                GenerationLogEntry(
+                    event="generation.failed",
+                    kind="llm",
+                    job_id=job_id,
+                    model_path=model_path,
+                    parameters=parameters,
+                    input={"prompt": prompt},
+                    output=None,
+                    timing={
+                        "prompt_ms": 0,
+                        "generation_ms": generation_ms,
+                        "total_ms": generation_ms,
+                    },
+                    error=error_record(exc),
+                    level="error",
+                )
+            )
             self._mark_failed(job_id, "llm", exc)
             raise
         finally:
@@ -301,6 +358,7 @@ class BackendRuntimeWrapper:
 
     def generate_image(self, request: JsonBody) -> JsonBody:
         job_id = _job_id("image")
+        started = time.monotonic()
         with self._lock:
             settings = dict(self._image_settings)
         model_path = _required_str(
@@ -321,6 +379,15 @@ class BackendRuntimeWrapper:
             request.get("sampler", request.get("sampler_name", "euler_ancestral"))
         )
         scheduler = str(request.get("scheduler", "simple"))
+        parameters: JsonBody = {
+            "width": width,
+            "height": height,
+            "steps": steps,
+            "cfg": cfg,
+            "seed": seed,
+            "sampler_name": sampler_name,
+            "scheduler": scheduler,
+        }
         diffusion_request = api.DiffusionRequest(
             model_path=model_path,
             prompt=prompt,
@@ -339,25 +406,6 @@ class BackendRuntimeWrapper:
             seed=seed,
             sampler_name=sampler_name,
             scheduler=scheduler,
-        )
-        self._log_prompt(
-            PromptLogEntry(
-                kind="diffusion",
-                job_id=job_id,
-                model_path=model_path,
-                prompt=prompt,
-                negative_prompt=negative_prompt,
-                extra={
-                    "cfg": cfg,
-                    "height": height,
-                    "output_path": output_path,
-                    "sampler_name": sampler_name,
-                    "scheduler": scheduler,
-                    "seed": seed,
-                    "steps": steps,
-                    "width": width,
-                },
-            )
         )
         self._mark_started(job_id, "image")
         image_path = output_path
@@ -405,6 +453,29 @@ class BackendRuntimeWrapper:
                 "resolved_embeddings": [],
                 "warnings": warnings,
             }
+            total_ms = int((time.monotonic() - started) * 1000)
+            self._log_generation(
+                GenerationLogEntry(
+                    event=(
+                        "generation.cancelled" if warnings else "generation.completed"
+                    ),
+                    kind="diffusion",
+                    job_id=job_id,
+                    model_path=model_path,
+                    parameters=parameters,
+                    input={
+                        "prompt": prompt,
+                        "negative_prompt": negative_prompt,
+                    },
+                    output={
+                        "image_path": result["image_path"],
+                        "metadata_path": result["metadata_path"],
+                        "seed": result["seed"],
+                        "warnings": result["warnings"],
+                    },
+                    timing={"total_ms": total_ms},
+                )
+            )
             self.event_bus.publish(
                 {
                     "type": "generation_completed",
@@ -415,6 +486,24 @@ class BackendRuntimeWrapper:
             )
             return result
         except Exception as exc:
+            total_ms = int((time.monotonic() - started) * 1000)
+            self._log_generation(
+                GenerationLogEntry(
+                    event="generation.failed",
+                    kind="diffusion",
+                    job_id=job_id,
+                    model_path=model_path,
+                    parameters=parameters,
+                    input={
+                        "prompt": prompt,
+                        "negative_prompt": negative_prompt,
+                    },
+                    output=None,
+                    timing={"total_ms": total_ms},
+                    error=error_record(exc),
+                    level="error",
+                )
+            )
             self._mark_failed(job_id, "image", exc)
             raise
         finally:
@@ -470,18 +559,18 @@ class BackendRuntimeWrapper:
             self._api = self._api_loader()
         return self._api
 
-    def _log_prompt(self, entry: PromptLogEntry) -> None:
+    def _log_generation(self, entry: GenerationLogEntry) -> None:
         try:
-            self.prompt_logger.log(entry)
+            self.generation_logger.log(entry)
         except OSError as exc:
             with self._lock:
-                self.status.last_error = f"prompt logging failed: {exc}"
+                self.status.last_error = f"generation logging failed: {exc}"
             self.event_bus.publish(
                 {
                     "type": "runtime_warning",
                     "kind": entry.kind,
                     "job_id": entry.job_id,
-                    "message": f"prompt logging failed: {exc}",
+                    "message": f"generation logging failed: {exc}",
                 }
             )
 

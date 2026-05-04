@@ -23,7 +23,7 @@ def _next_prompt_log_path(app_root: str) -> str:
     root.mkdir(parents=True, exist_ok=True)
     index = 1
     while True:
-        candidate = root / f"log_{index}.txt"
+        candidate = root / f"log_{index}.jsonl"
         try:
             with candidate.open("x", encoding="utf-8"):
                 return str(candidate)

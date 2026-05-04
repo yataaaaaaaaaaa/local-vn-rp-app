@@ -179,7 +179,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--prompt-log-path",
         default="",
-        help="Optional text file path where exact LLM and diffusion prompts are appended.",
+        help="Optional JSONL file path where LLM and diffusion generation records are appended.",
     )
     args = parser.parse_args(argv)
     paths = configure_storage_paths(str(args.project_name), str(args.app_root), str(args.story_root), str(args.output_root))
