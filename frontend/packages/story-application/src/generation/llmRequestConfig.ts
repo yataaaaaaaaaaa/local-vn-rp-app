@@ -48,6 +48,6 @@ export function rpNovelLlmRequestConfig(
       overrides.repeat_penalty ??
       runtimeConfig.llm.repeat_penalty ??
       RP_NOVEL_PRESET.repeat_penalty,
-    stop: overrides.stop ?? runtimeConfig.llm.stop ?? RP_NOVEL_STOP
+    stop: overrides.stop ?? RP_NOVEL_STOP
   };
 }

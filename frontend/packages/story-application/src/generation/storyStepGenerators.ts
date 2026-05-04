@@ -14,6 +14,7 @@ import {
 import type { StoryGenerationBackend } from "../ports";
 import {
   RP_DIALOGUE_STOP,
+  RP_NOVEL_STOP,
   buildAutomaticUserAnswerPrompt,
   buildRpAnswerPrompt,
   buildVisualRepresentationPrompt,
@@ -160,6 +161,16 @@ export async function generateVisualDescriptionStep(input: {
   document: StoryNodeFields;
   context: StoryStepGenerationContext;
 }): Promise<WorkflowGenerationResult<StoryWorkflowPayload>> {
+  if (input.document.userText.trim() && !input.document.dialogue.trim()) {
+    return {
+      value: {
+        visualDescription: "",
+        resolverText: ""
+      },
+      warnings: ["Skipped visual cue generation because NPC_REPLY is empty."]
+    };
+  }
+
   const result = await input.context.backend.generateLlm(
     rpNovelLlmRequestConfig(
       input.context.config,
@@ -169,7 +180,9 @@ export async function generateVisualDescriptionStep(input: {
         selectedNodeId: input.context.selectedNodeId
       }),
       {
-        max_tokens: Math.min(input.context.config.llm.max_tokens, 96)
+        max_tokens: Math.min(input.context.config.llm.max_tokens, 64),
+        temperature: Math.min(input.context.config.llm.temperature, 0.35),
+        stop: RP_NOVEL_STOP
       }
     ),
     { signal: input.context.abortSignal }

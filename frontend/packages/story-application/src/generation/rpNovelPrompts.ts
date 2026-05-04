@@ -20,15 +20,7 @@ export const RP_NOVEL_STOP = [
   "\nSystem:",
   "\nNarrator:",
   "\nUSER:",
-  "\nUSER_",
   "\nPLAYER:",
-  "\nNPC:",
-  "\nNPC_",
-  "\nNPC_REPLY:",
-  "\nVISUAL_CUE:",
-  "\nPREVIOUS_TURNS:",
-  "\nCURRENT_TURN:",
-  "\nFINAL TASK:",
   "\n# Scene",
   "\n# Visual",
   "\nScene description:",
@@ -39,7 +31,6 @@ export const RP_NOVEL_STOP = [
 
 export const RP_DIALOGUE_STOP = [
   ...RP_NOVEL_STOP,
-  "\n\n",
   "\nVisual:",
   "\nDescription:",
   "\nTags:",
@@ -75,6 +66,22 @@ function storyContextBlock(node: StoryNodeFields): string {
   ].join("\n");
 }
 
+function visualContextBlock(node: StoryNodeFields): string {
+  return [
+    "VISIBLE_SCENE_CONTEXT:",
+    compactVisibleContext(node.context) || "(empty)"
+  ].join("\n");
+}
+
+function compactVisibleContext(context: string): string {
+  const firstParagraph = context
+    .split(/\n\s*\n/g)
+    .map((part) => part.replace(/\s+/g, " ").trim())
+    .find(Boolean) ?? "";
+
+  return firstParagraph.slice(0, 700).trim();
+}
+
 function currentUserTurnBlock(node: StoryNodeFields): string {
   return [
     "CURRENT_TURN:",
@@ -86,7 +93,7 @@ function currentResolvedTurnBlock(node: StoryNodeFields): string {
   return [
     "CURRENT_TURN:",
     `USER: ${node.userText || "(empty)"}`,
-    `NPC: ${node.dialogue || "(empty)"}`
+    `NPC_REPLY: ${node.dialogue || "(empty)"}`
   ].join("\n");
 }
 
@@ -127,11 +134,7 @@ export function buildRpAnswerPrompt(input: RpPromptInput): string {
     "FINAL TASK:",
     "Write NPC_REPLY only.",
     "",
-    "GOOD_OUTPUT_EXAMPLES:",
-    "\"Then we should open it before the rain gets worse.\"",
-    "She lowers her voice. \"Stay close, and don't touch the glass.\"",
-    "",
-    "OUTPUT:"
+    "OUTPUT ONLY THE NPC_REPLY TEXT BELOW:",
   ].join("\n");
 }
 
@@ -140,29 +143,28 @@ export function buildVisualRepresentationPrompt(input: RpPromptInput): string {
     "You write simple visual cues for anime image tagging.",
     "",
     "RULES:",
-    "- Output VISUAL_CUE only.",
-    "- 18-35 words.",
+    "- Output one compact VISUAL_CUE sentence only.",
+    "- Under 35 words.",
     "- Literal visible facts only.",
     "- Mention character count, pose, clothing, setting, props, lighting.",
-    "- No dialogue.",
-    "- No thoughts.",
-    "- No plot lore.",
-    "- No fandom/source names.",
+    "- No dialogue or quoted speech.",
+    "- No thoughts or emotions that are not visible on the face/body.",
+    "- No plot lore, source/fandom names, measurements, word counts, or checklists.",
     "- No Danbooru tags, comma-tag prompt syntax, LoRA syntax, JSON, headings, or markdown.",
     "- No prose style or dramatic narration.",
     "",
     metadataBlock(input),
     "",
-    storyContextBlock(input.node),
+    visualContextBlock(input.node),
     "",
     previousVisualBlock(input.node),
     "",
     currentResolvedTurnBlock(input.node),
     "",
     "FINAL TASK:",
-    "Write VISUAL_CUE only.",
+    "Write one literal VISUAL_CUE sentence only.",
     "",
-    "OUTPUT:"
+    "OUTPUT ONLY THE VISUAL_CUE TEXT BELOW:"
   ].join("\n");
 }
 
@@ -225,12 +227,15 @@ export function cleanDialogueOutput(text: string): string {
 export function cleanVisualDescriptionOutput(text: string): string {
   const compact = cleanLines(text)
     .join(" ")
+    .replace(/^(?:\s*\d+\s*\/\s*\d+[.;:\-]?)+\s*/, "")
     .replace(/^\s*[-*•]\s*/, "")
+    .replace(/[“"][^“”"]{1,160}[”"]/g, "")
+    .replace(/\b(?:whispers?|says?|replies?|asks?)\b[^.!?]*[.!?]?/gi, "")
     .replace(/\s+/g, " ")
     .trim();
 
   const sentences = compact.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ?? [compact];
-  return sentences.slice(0, 2).join(" ").trim();
+  return sentences[0]?.trim() ?? "";
 }
 
 export function cleanSingleLineOutput(text: string): string {
