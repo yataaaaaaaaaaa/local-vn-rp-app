@@ -9,11 +9,25 @@ const script = forceBuild || !hasBuiltElectron || !hasBuiltRenderer
   ? "electron:start"
   : "electron:run";
 
-const result = spawnSync(
-  process.platform === "win32" ? "npm.cmd" : "npm",
-  ["run", script, "--", ...process.argv.slice(2)],
-  { stdio: "inherit" }
-);
+const npmArgs = ["run", script, "--", ...process.argv.slice(2)];
+
+// Windows Node.js rejects direct spawn/spawnSync of .cmd shims such as
+// npm.cmd without shell mode. When this script is run by npm, npm exposes the
+// JavaScript CLI entrypoint in npm_execpath, so run that through the current
+// node executable instead of spawning npm.cmd.
+const npmExecPath = process.env.npm_execpath;
+const command = process.platform === "win32" && npmExecPath
+  ? process.execPath
+  : process.platform === "win32"
+    ? process.env.ComSpec ?? "cmd.exe"
+    : "npm";
+const args = process.platform === "win32" && npmExecPath
+  ? [npmExecPath, ...npmArgs]
+  : process.platform === "win32"
+    ? ["/d", "/s", "/c", "npm", ...npmArgs]
+    : npmArgs;
+
+const result = spawnSync(command, args, { stdio: "inherit" });
 
 if (result.error) {
   throw result.error;
