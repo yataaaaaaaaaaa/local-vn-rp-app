@@ -14,7 +14,8 @@ export function createStorySessionStoreState(
     ...controller.getState(),
 
     createStory: (title: string) => controller.createStory(title),
-    loadStory: (storyId: string) => controller.loadStory(storyId),
+    loadStory: (storyId: string, options?: { resume?: boolean }) =>
+      controller.loadStory(storyId, options),
     renameStory: (title: string) => controller.renameStory(title),
     saveStory: () => controller.saveStory(),
 

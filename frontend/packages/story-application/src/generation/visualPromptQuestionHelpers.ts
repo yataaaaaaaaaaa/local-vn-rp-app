@@ -21,8 +21,7 @@ export interface VisualPlannerRuntime {
     abortSignal?: AbortSignal;
 }
 
-export async function addTagsFromQuestion(
-    plan: VisualPromptPlan,
+export async function askTagsFromQuestion(
     runtime: VisualPlannerRuntime,
     input: {
         key: string;
@@ -49,12 +48,66 @@ export async function addTagsFromQuestion(
         input.fallback ?? []
     );
 
+    runtime.facts[input.key] = tags;
+
+    return tags;
+}
+
+export async function addTagsFromQuestion(
+    plan: VisualPromptPlan,
+    runtime: VisualPlannerRuntime,
+    input: {
+        key: string;
+        question: string;
+        allowedTags: AllowedTag[];
+        fallback?: string[];
+        example?: string;
+    }
+): Promise<string[]> {
+    const tags = await askTagsFromQuestion(runtime, input);
+
     if (tags.length) {
         plan.fixedTags.push(...tags);
-        runtime.facts[input.key] = tags;
     }
 
     return tags;
+}
+
+export async function addSingleTagChoiceByNumber(
+    plan: VisualPromptPlan,
+    runtime: VisualPlannerRuntime,
+    input: {
+        key: string;
+        question: string;
+        allowedTags: AllowedTag[];
+        fallback?: string;
+        example?: string;
+        addToPlan?: boolean;
+    }
+): Promise<string | null> {
+    const answer = await askRawLlmLine({
+        runtime,
+        question: buildNumberedTagChoiceQuestion({
+            question: input.question,
+            allowedTags: input.allowedTags,
+            example: input.example ?? "3"
+        })
+    });
+
+    const chosenIndex = parseNumberedChoiceAnswer(answer, input.allowedTags.length);
+    const chosenTag = chosenIndex === null
+        ? input.fallback ?? null
+        : input.allowedTags[chosenIndex].tag;
+
+    if (chosenTag) {
+        if (input.addToPlan !== false) {
+            plan.fixedTags.push(chosenTag);
+        }
+
+        runtime.facts[input.key] = chosenTag;
+    }
+
+    return chosenTag;
 }
 
 export async function isVisible(
@@ -188,6 +241,25 @@ function buildNaturalTagQuestion(input: {
         "Answer as a short natural sentence.",
         "Use the exact tag names from the allowed list.",
         "If several allowed tags apply, include all of them in the same sentence.",
+        "If none apply, say that no allowed tag applies.",
+        "Example:",
+        input.example
+    ].join("\n");
+}
+
+function buildNumberedTagChoiceQuestion(input: {
+    question: string;
+    allowedTags: AllowedTag[];
+    example: string;
+}): string {
+    return [
+        input.question,
+        "",
+        "Choose exactly one option by number:",
+        input.allowedTags.map((tag, index) => `${index + 1}. ${tag.tag}`).join("\n"),
+        "",
+        "Answer with the number only.",
+        "Do not output the tag name.",
         "Example:",
         input.example
     ].join("\n");
@@ -224,6 +296,22 @@ function buildNaturalRawDescriptionQuestion(input: {
         "Example:",
         input.example
     ].join("\n");
+}
+
+function parseNumberedChoiceAnswer(answer: string, optionCount: number): number | null {
+    const match = answer.match(/\b(?:option|choice|number|#)?\s*(\d{1,3})\b/i);
+
+    if (!match) {
+        return null;
+    }
+
+    const number = Number(match[1]);
+
+    if (!Number.isInteger(number) || number < 1 || number > optionCount) {
+        return null;
+    }
+
+    return number - 1;
 }
 
 function formatKnownFacts(

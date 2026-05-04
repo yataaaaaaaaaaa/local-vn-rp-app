@@ -48,7 +48,7 @@ export type StorySessionListener = (state: StorySessionState) => void;
 
 export interface StorySessionActions {
   createStory(title: string): Promise<void>;
-  loadStory(storyId: string): Promise<void>;
+  loadStory(storyId: string, options?: { resume?: boolean }): Promise<void>;
   renameStory(title: string): Promise<void>;
   saveStory(): Promise<void>;
 

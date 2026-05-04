@@ -19,7 +19,7 @@ import {
   buildRpAnswerPrompt,
   buildVisualRepresentationPrompt,
   cleanDialogueOutput,
-  cleanSingleLineOutput,
+  cleanUserTextOutput,
   cleanVisualDescriptionOutput
 } from "./rpNovelPrompts";
 import { rpNovelLlmRequestConfig } from "./llmRequestConfig";
@@ -133,7 +133,7 @@ export async function generateUserTextStep(input: {
 
   return {
     value: {
-      userText: cleanSingleLineOutput(result.text)
+      userText: cleanUserTextOutput(result.text)
     }
   };
 }
@@ -271,9 +271,11 @@ export async function generateDanbotStep(input: {
       rawDanbotDescriptions: [fallbackText]
     };
 
-  const rawDescriptions = plan.rawDanbotDescriptions.length
+  const rawDescriptions = resolverText
     ? plan.rawDanbotDescriptions
-    : [fallbackText];
+    : plan.rawDanbotDescriptions.length
+      ? plan.rawDanbotDescriptions
+      : [fallbackText];
 
   const allDanbotTags: string[] = [];
   const warnings: string[] = [];

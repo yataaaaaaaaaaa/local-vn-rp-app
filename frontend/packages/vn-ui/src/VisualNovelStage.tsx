@@ -19,6 +19,7 @@ import {
 } from "./useResolvedCurrentNode";
 import { KSamplerProgress } from "./workflow-tabs/KSamplerProgress";
 
+const userTextStepIndex = storyWorkflowStepIds.indexOf("userText");
 const dialogueStepIndex = storyWorkflowStepIds.indexOf("dialogue");
 const imageStepIndex = storyWorkflowStepIds.indexOf("image");
 
@@ -63,14 +64,36 @@ export function VisualNovelStage() {
   const streamedDialogue = llmStreamJobId
     ? textByJobId[llmStreamJobId] ?? ""
     : "";
+  const streamedUserText = llmStreamJobId
+    ? textByJobId[llmStreamJobId] ?? ""
+    : "";
+  const isGeneratingUserText =
+    storyBusy &&
+    runningJob?.nodeId === selectedNodeId &&
+    runningJob?.stepId === "userText";
   const isGeneratingCurrentDialogue =
     storyBusy &&
     runningJob?.nodeId === selectedNodeId &&
     runningJob?.stepId === "dialogue";
+  const isGeneratingCurrentScene =
+    storyBusy && runningJob?.nodeId === selectedNodeId;
+  const runningStepIndex = isGeneratingCurrentScene
+    ? storyWorkflowStepIds.indexOf(runningJob.stepId)
+    : -1;
   const isGeneratingImage =
     storyBusy &&
     runningJob?.nodeId === selectedNodeId &&
     runningJob?.stepId === "image";
+  const isGeneratingAfterImage = runningStepIndex > imageStepIndex;
+  const isGeneratingBeforeImage =
+    isGeneratingCurrentScene &&
+    runningStepIndex >= 0 &&
+    runningStepIndex < imageStepIndex;
+  const isGeneratingAfterUserText = runningStepIndex > userTextStepIndex;
+  const isGeneratingBeforeUserText =
+    isGeneratingCurrentScene &&
+    runningStepIndex >= 0 &&
+    runningStepIndex < userTextStepIndex;
 
   const imageJobId =
     activeJobIdsByKind.image ?? (storyBusy ? latestJobIdsByKind.image : undefined);
@@ -89,13 +112,41 @@ export function VisualNovelStage() {
         ? parentNode.dialogue || parentNode.context || "..."
         : "...";
 
+  const hasReachedUserText =
+    currentStepIndex >= userTextStepIndex && Boolean(node.userText.trim());
+  const displayedAutoUserText = isGeneratingAfterUserText
+    ? node.userText
+    : isGeneratingUserText
+      ? streamedUserText || node.userText
+      : isGeneratingBeforeUserText
+        ? hasParentScene
+          ? parentNode.userText
+          : ""
+        : hasReachedUserText
+          ? node.userText
+          : hasParentScene
+            ? parentNode.userText
+            : "";
+  const userTextAreaLocked = generateUserAnswerFromLlm || isGeneratingUserText;
+  const userTextAreaValue = userTextAreaLocked
+    ? displayedAutoUserText
+    : userText;
+
   const hasReachedImage =
     currentStepIndex >= imageStepIndex && Boolean(currentSceneImage);
-  const displayImage = hasReachedImage
+  const displayImage = isGeneratingAfterImage
     ? currentSceneImage
-    : isGeneratingImage || (isBeforeDialogue && hasParentScene)
+    : isGeneratingImage
       ? previousSceneImage
-      : null;
+      : isGeneratingBeforeImage
+        ? hasParentScene
+          ? previousSceneImage
+          : null
+        : hasReachedImage
+          ? currentSceneImage
+          : hasParentScene
+            ? previousSceneImage
+            : null;
 
   async function submitUserText() {
     const text = userText.trim();
@@ -130,9 +181,6 @@ export function VisualNovelStage() {
             />
           ) : null}
 
-          {!displayImage && !isGeneratingImage ? (
-            <span className="small">No image linked to this node yet.</span>
-          ) : null}
         </div>
       </div>
 
@@ -151,15 +199,31 @@ export function VisualNovelStage() {
         <label className="vn-user-textarea">
           <span className="sr-only">User text for the next leaf</span>
           <textarea
-            value={userText}
-            onChange={(event) => setUserText(event.target.value)}
+            value={userTextAreaValue}
+            onChange={(event) => {
+              if (!userTextAreaLocked) {
+                setUserText(event.target.value);
+              }
+            }}
             onKeyDown={(event) => {
+              if (userTextAreaLocked) {
+                event.preventDefault();
+                return;
+              }
+
               if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
                 event.preventDefault();
                 void submitUserText();
               }
             }}
-            placeholder="Player action or spoken line..."
+            readOnly={userTextAreaLocked}
+            placeholder={
+              isGeneratingUserText
+                ? "Generating player text..."
+                : generateUserAnswerFromLlm
+                  ? "LLM player text enabled"
+                : "Player action or spoken line..."
+            }
           />
         </label>
 
@@ -179,7 +243,7 @@ export function VisualNovelStage() {
           </label>
 
           <button
-            disabled={storyBusy || !userText.trim()}
+            disabled={storyBusy || generateUserAnswerFromLlm || !userText.trim()}
             onClick={() => void submitUserText()}
           >
             {storyBusy ? "Streaming..." : "Send"}

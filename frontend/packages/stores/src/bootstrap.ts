@@ -28,7 +28,9 @@ export async function bootstrapFrontend(): Promise<void> {
   let restored = false;
 
   if (lastOpenedStoryId) {
-    await useStorySessionStore.getState().loadStory(lastOpenedStoryId);
+    await useStorySessionStore.getState().loadStory(lastOpenedStoryId, {
+      resume: false
+    });
     restored = useStorySessionStore.getState().storyId === lastOpenedStoryId;
   }
 

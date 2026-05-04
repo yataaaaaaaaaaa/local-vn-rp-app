@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   RP_DIALOGUE_STOP,
   RP_NOVEL_PRESET,
+  buildAutomaticUserAnswerPrompt,
   buildRpAnswerPrompt,
   buildVisualRepresentationPrompt,
   cleanDialogueOutput,
+  cleanUserTextOutput,
   cleanVisualDescriptionOutput
 } from "../src/generation/rpNovelPrompts";
 
@@ -70,7 +72,49 @@ describe("RP novel prompts", () => {
     expect(prompt).toContain("NPC spoken dialogue may use first person.");
     expect(prompt).toContain("narration or action prose must be third person");
     expect(prompt).toContain("End with complete terminal punctuation");
+    expect(prompt).toContain("Continue from LATEST_PREVIOUS_TURN");
     expect(prompt).toContain("Do not use asterisks");
+  });
+
+  it("anchors automatic user text to the latest previous turn", () => {
+    const prompt = buildAutomaticUserAnswerPrompt({
+      node: {
+        context: [
+          "INITIAL SETUP: The archive smells of old parchment.",
+          "",
+          "Darkness is the main NPC. Kazuma is the user/player character.",
+          "",
+          "PREVIOUS_TURN:",
+          "USER: Are you ready?",
+          "NPC: I am.",
+          "VISUAL_CUE: Darkness stands beside an oak table.",
+          "",
+          "PREVIOUS_TURN:",
+          "USER: What are you waiting for?",
+          "NPC: Give me your hand."
+        ].join("\n"),
+        userText: "",
+        dialogue: "",
+        visualDescription: "",
+        resolverText: "",
+        selectedTags: "",
+        danbotTags: "",
+        positivePrompt: "",
+        negativePrompt: "",
+        imageRef: ""
+      }
+    });
+
+    expect(prompt).toContain("LATEST_PREVIOUS_TURN:");
+    expect(prompt).toContain("FULL_STORY_CONTEXT:");
+    expect(prompt).toContain("INITIAL SETUP: The archive smells of old parchment.");
+    expect(prompt).toContain("NPC: I am.");
+    expect(prompt).toContain("VISUAL_CUE: Darkness stands beside an oak table.");
+    expect(prompt).toContain("NPC: Give me your hand.");
+    expect(prompt).toContain("Continue from LATEST_PREVIOUS_TURN");
+    expect(prompt).toContain("full accumulated story memory");
+    expect(prompt).toContain("Do not write first-person prose");
+    expect(prompt).not.toContain("NPC: I am.\n\nCURRENT_TURN");
   });
 
   it("cleans labels after generation instead of relying on brittle hard stops", () => {
@@ -87,5 +131,13 @@ describe("RP novel prompts", () => {
     ).toBe(
       "1girl with blonde hair sits at an archive table. Candles and open books surround her."
     );
+  });
+
+  it("cleans automatic user text away from narration and dangling continuations", () => {
+    expect(
+      cleanUserTextOutput(
+        '*The air crackles with tension as I lean closer, my voice dropping to a whisper.* "Are you certain you\'re ready for this, Kazuma? Once we begin, there\'s no'
+      )
+    ).toBe("Are you certain you're ready for this, Kazuma?");
   });
 });

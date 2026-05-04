@@ -126,7 +126,10 @@ export class StorySessionController {
     await this.saveStory();
   }
 
-  public async loadStory(storyId: string): Promise<void> {
+  public async loadStory(
+    storyId: string,
+    options: { resume?: boolean } = {}
+  ): Promise<void> {
     let selectedNodeId: string | null = null;
 
     await this.runBusy(async () => {
@@ -148,7 +151,9 @@ export class StorySessionController {
       }
     });
 
-    await this.workflowCoordinator.resumeScene(selectedNodeId);
+    if (options.resume !== false) {
+      this.resumeSceneInBackground(selectedNodeId);
+    }
   }
 
   public async saveStory(): Promise<void> {
@@ -408,7 +413,7 @@ export class StorySessionController {
     });
 
     if (config && !wasReady) {
-      void this.workflowCoordinator.resumeScene(this.state.selectedNodeId);
+      this.resumeSceneInBackground(this.state.selectedNodeId);
     }
   }
 
@@ -509,7 +514,7 @@ export class StorySessionController {
 
     if (result.changed) {
       void this.saveStory();
-      void this.workflowCoordinator.resumeScene(result.state.selectedNodeId);
+      this.resumeSceneInBackground(result.state.selectedNodeId);
     }
   }
 
@@ -526,6 +531,12 @@ export class StorySessionController {
     if (changed) {
       await this.saveStory();
     }
+  }
+
+  private resumeSceneInBackground(nodeId?: string | null): void {
+    void this.workflowCoordinator.resumeScene(nodeId).catch((error) => {
+      this.handleError(error);
+    });
   }
 
   private async runBusy(work: () => Promise<void>): Promise<void> {

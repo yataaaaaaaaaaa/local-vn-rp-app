@@ -42,7 +42,7 @@ function rpIdentityInstruction(): string {
 
 function storyContextBlock(node: StoryNodeFields): string {
   return [
-    "STORY_CONTEXT:",
+    "FULL_STORY_CONTEXT:",
     node.context || "(empty)"
   ].join("\n");
 }
@@ -85,6 +85,27 @@ function currentResolvedTurnBlock(node: StoryNodeFields): string {
   ].join("\n");
 }
 
+function latestPreviousTurnBlock(node: StoryNodeFields): string {
+  return [
+    "LATEST_PREVIOUS_TURN:",
+    latestPreviousTurnFromContext(node.context) || "(empty)"
+  ].join("\n");
+}
+
+function latestPreviousTurnFromContext(context: string): string {
+  const marker = "PREVIOUS_TURN:";
+  const index = context.lastIndexOf(marker);
+
+  if (index < 0) {
+    return "";
+  }
+
+  return context
+    .slice(index + marker.length)
+    .replace(/\n\s*\n[\s\S]*$/g, "")
+    .trim();
+}
+
 function previousVisualBlock(node: StoryNodeFields): string {
   const previousVisual = lastVisualCueFromContext(node.context);
 
@@ -109,6 +130,8 @@ export function buildRpAnswerPrompt(input: RpPromptInput): string {
     "- Output NPC_REPLY only.",
     "- One or two complete VN textbox sentences are best; never exceed three short lines.",
     "- End with complete terminal punctuation. Do not trail off mid-sentence.",
+    "- Use FULL_STORY_CONTEXT as the full accumulated story memory from the initial setup through all previous dialogue and visual cues.",
+    "- Continue from LATEST_PREVIOUS_TURN and CURRENT_TURN; do not replay or summarize earlier turns.",
     "- Do not write the player.",
     "- Do not write visual description.",
     "- NPC spoken dialogue may use first person.",
@@ -120,6 +143,8 @@ export function buildRpAnswerPrompt(input: RpPromptInput): string {
     "- Do not summarize the scene. Do not continue after NPC_REPLY.",
     "",
     storyContextBlock(input.node),
+    "",
+    latestPreviousTurnBlock(input.node),
     "",
     currentUserTurnBlock(input.node),
     "",
@@ -167,10 +192,18 @@ export function buildAutomaticUserAnswerPrompt(input: RpPromptInput): string {
     "- Output USER_REPLY only.",
     "- One short VN textbox line.",
     "- Do not write the NPC.",
-    "- Do not write visual description.",
+    "- Use FULL_STORY_CONTEXT as the full accumulated story memory from the initial setup through all previous dialogue and visual cues.",
+    "- Continue from LATEST_PREVIOUS_TURN; do not replay or summarize it.",
+    "- Write the player's next spoken line or concise player intent only.",
+    "- Do not write visual description, narration, ambience, or stage directions.",
+    "- Do not write first-person prose like 'I lean closer' or action in asterisks.",
+    "- If the player speaks, output only the spoken words without quotation marks.",
+    "- End with complete terminal punctuation. Do not trail off mid-sentence.",
     "- Do not continue after USER_REPLY.",
     "",
     storyContextBlock(input.node),
+    "",
+    latestPreviousTurnBlock(input.node),
     "",
     currentResolvedTurnBlock(input.node),
     "",
@@ -234,6 +267,24 @@ export function cleanVisualDescriptionOutput(text: string): string {
 
 export function cleanSingleLineOutput(text: string): string {
   return cleanLines(text)[0]?.trim() ?? "";
+}
+
+export function cleanUserTextOutput(text: string): string {
+  const line = cleanSingleLineOutput(text)
+    .replace(/\*[^*]{0,240}\*/g, "")
+    .replace(/\*/g, "")
+    .replace(/^\s*(?:user|player|user_reply|reply)\s*:\s*/i, "")
+    .replace(/^["“”]+|["“”]+$/g, "")
+    .trim();
+
+  const withoutFirstPersonAction = line
+    .replace(/\b(?:as\s+)?I\s+(?:lean|step|move|reach|touch|grab|look|glance|smile|whisper|speak|say|ask|reply|turn|raise|lower|press|pull|push)\b[^.!?]*[.!?]?/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return trimDanglingSentence(withoutFirstPersonAction || line)
+    .replace(/^["“”]+|["“”]+$/g, "")
+    .trim();
 }
 
 function trimDanglingSentence(text: string): string {
