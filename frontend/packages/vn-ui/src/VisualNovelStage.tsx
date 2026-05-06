@@ -90,10 +90,6 @@ export function VisualNovelStage() {
     runningStepIndex >= 0 &&
     runningStepIndex < imageStepIndex;
   const isGeneratingAfterUserText = runningStepIndex > userTextStepIndex;
-  const isGeneratingBeforeUserText =
-    isGeneratingCurrentScene &&
-    runningStepIndex >= 0 &&
-    runningStepIndex < userTextStepIndex;
 
   const imageJobId =
     activeJobIdsByKind.image ?? (storyBusy ? latestJobIdsByKind.image : undefined);
@@ -112,21 +108,14 @@ export function VisualNovelStage() {
         ? parentNode.dialogue || parentNode.context || "..."
         : "...";
 
-  const hasReachedUserText =
-    currentStepIndex >= userTextStepIndex && Boolean(node.userText.trim());
-  const displayedAutoUserText = isGeneratingAfterUserText
+  const isCurrentStepUserText = currentStepIndex === userTextStepIndex;
+  const isAfterUserTextStep =
+    currentStepIndex > userTextStepIndex || isGeneratingAfterUserText;
+  const displayedAutoUserText = isAfterUserTextStep
     ? node.userText
-    : isGeneratingUserText
+    : generateUserAnswerFromLlm && (isCurrentStepUserText || isGeneratingUserText)
       ? streamedUserText || node.userText
-      : isGeneratingBeforeUserText
-        ? hasParentScene
-          ? parentNode.userText
-          : ""
-        : hasReachedUserText
-          ? node.userText
-          : hasParentScene
-            ? parentNode.userText
-            : "";
+      : "";
   const userTextAreaLocked = generateUserAnswerFromLlm || isGeneratingUserText;
   const userTextAreaValue = userTextAreaLocked
     ? displayedAutoUserText

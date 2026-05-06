@@ -4,8 +4,10 @@ import { chooseNamedChildFromQuestion, type VisualPlannerRuntime } from "./visua
 
 export interface ActionCompositionNode {
     name: string;
+    question?: string;
     weight?: number;
-    content: ActionCompositionNode[] | string[];
+    content: string[];
+    child?: ActionCompositionNode[];
 }
 
 export interface ActionCompositionSelectionIssue {
@@ -31,7 +33,9 @@ export class ActionCompositionSelectionError extends Error {
 
 export const defaultActionCompositionTree: ActionCompositionNode = {
     name: "action composition decision tree",
-    content: [
+    question: "Which action/composition branch best matches the current visible scene?",
+    content: [],
+    child: [
         {
             name: "default standing composition",
             weight: 1,
@@ -47,22 +51,19 @@ export async function selectActionCompositionTreeTags(input: {
 }): Promise<string[]> {
     const tree = input.tree ?? defaultActionCompositionTree;
     const path: string[] = [tree.name];
+    const selectedTags: string[] = [];
     let current = tree;
 
     for (let depth = 0; depth < 80; depth += 1) {
         validateActionCompositionNode(current);
+        selectedTags.push(...cleanTags(current.content));
+        input.runtime.facts.action_composition_tree = path.join(" > ");
+        input.runtime.facts.action_composition_tags = selectedTags;
 
-        if (isActionCompositionLeaf(current)) {
-            const tags = current.content.map((tag) => tag.trim()).filter(Boolean);
-            input.runtime.facts.action_composition_tree = path.join(" > ");
-            input.runtime.facts.action_composition_tags = tags;
-            return tags;
-        }
-
-        const children = current.content as ActionCompositionNode[];
+        const children = current.child ?? [];
 
         if (children.length === 0) {
-            throw new Error(`Action composition tree node "${current.name}" has no children.`);
+            return selectedTags;
         }
 
         const weightedChildren = children.filter((child) => isPositiveWeight(child.weight));
@@ -101,19 +102,20 @@ export function validateActionCompositionNode(value: unknown): asserts value is 
         throw new Error(`Action composition node "${value.name}" has a non-numeric weight.`);
     }
 
-    if (!Array.isArray(value.content)) {
+    if (value.question !== undefined && typeof value.question !== "string") {
+        throw new Error(`Action composition node "${value.name}" has a non-string question.`);
+    }
+
+    if (!Array.isArray(value.content) || !value.content.every((item) => typeof item === "string")) {
         throw new Error(`Action composition node "${value.name}" requires a content array.`);
     }
 
-    const hasString = value.content.some((item) => typeof item === "string");
-    const hasNode = value.content.some((item) => isRecord(item));
-
-    if (hasString && hasNode) {
-        throw new Error(`Action composition node "${value.name}" mixes string tags and child nodes.`);
+    if (value.child !== undefined && !Array.isArray(value.child)) {
+        throw new Error(`Action composition node "${value.name}" has a non-array child field.`);
     }
 
-    if (!hasString) {
-        for (const child of value.content) {
+    if (Array.isArray(value.child)) {
+        for (const child of value.child) {
             validateActionCompositionNode(child);
         }
     }
@@ -121,10 +123,6 @@ export function validateActionCompositionNode(value: unknown): asserts value is 
 
 export function cloneActionCompositionTree(tree: ActionCompositionNode): ActionCompositionNode {
     return JSON.parse(JSON.stringify(tree)) as ActionCompositionNode;
-}
-
-function isActionCompositionLeaf(node: ActionCompositionNode): node is ActionCompositionNode & { content: string[] } {
-    return node.content.every((item) => typeof item === "string");
 }
 
 async function chooseLlmChild(input: {
@@ -136,7 +134,7 @@ async function chooseLlmChild(input: {
     const choices = input.children.map((child) => child.name);
     const selectedName = await chooseNamedChildFromQuestion(input.runtime, {
         key: `action_composition_${toQuestionKeySuffix(input.path.join("_"))}`,
-        question:
+        question: input.current.question?.trim() ||
             `Choose the action/composition branch that best matches the current scene under "${input.current.name}".`,
         choices,
         example: "1"
@@ -190,6 +188,10 @@ function buildSelectionIssue(
 
 function normalizedWeight(weight: number | undefined): number {
     return isPositiveWeight(weight) ? weight : 1;
+}
+
+function cleanTags(tags: string[]): string[] {
+    return tags.map((tag) => tag.trim()).filter(Boolean);
 }
 
 function isPositiveWeight(weight: number | undefined): weight is number {

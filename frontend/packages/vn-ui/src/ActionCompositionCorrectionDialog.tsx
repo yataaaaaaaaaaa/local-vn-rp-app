@@ -21,13 +21,7 @@ export function ActionCompositionCorrectionDialog() {
 
     return formatJson({
       name: "new action composition branch",
-      content: [
-        {
-          name: "variant 001",
-          weight: 50,
-          content: ["standing", "straight-on", "upper body"]
-        }
-      ]
+      content: ["standing", "straight-on", "upper body"]
     });
   }, [issue]);
 

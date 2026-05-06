@@ -92,11 +92,7 @@ export const useActionCompositionTreeStore = create<ActionCompositionTreeState>(
         throw new Error(`Cannot find action composition tree path: ${path.join(" > ")}`);
       }
 
-      if (parent.content.some((item) => typeof item === "string")) {
-        throw new Error(`Cannot add a child under leaf node "${parent.name}".`);
-      }
-
-      (parent.content as ActionCompositionNode[]).push(child);
+      parent.child = [...(parent.child ?? []), child];
 
       return {
         tree,
@@ -119,11 +115,11 @@ function findNodeByPath(
   let current = tree;
 
   for (const segment of path.slice(1)) {
-    if (current.content.some((item) => typeof item === "string")) {
+    if (!current.child?.length) {
       return null;
     }
 
-    const next = (current.content as ActionCompositionNode[]).find((child) => child.name === segment);
+    const next = current.child.find((child) => child.name === segment);
 
     if (!next) {
       return null;

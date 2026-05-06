@@ -24,17 +24,6 @@ import {
     type AllowedTag
 } from "./visualPromptTagHelpers";
 
-const SUBJECT_TAGS: AllowedTag[] = [
-    { tag: "1girl", aliases: ["one girl", "a girl", "female character"] },
-    { tag: "1boy", aliases: ["one boy", "a boy", "male character"] },
-    { tag: "solo", aliases: ["alone", "single character"] },
-    { tag: "1girl, 1boy", aliases: ["one girl and one boy", "girl and boy"] },
-    { tag: "2girls", aliases: ["two girls"] },
-    { tag: "2boys", aliases: ["two boys"] },
-    { tag: "multiple girls" },
-    { tag: "multiple boys" },
-    { tag: "group" }
-];
 
 const VISIBLE_BODY_REGION_TAGS: AllowedTag[] = [
     { tag: "face" },
@@ -73,26 +62,14 @@ const EMOTION_TAGS: AllowedTag[] = [
     { tag: "confident" },
     { tag: "smirk" },
     { tag: "sleepy" },
-    { tag: "peaceful" }
-];
-
-const FACIAL_EXPRESSION_DETAIL_TAGS: AllowedTag[] = [
+    { tag: "peaceful" },
     { tag: "seductive smile" },
     { tag: "grin" },
-    { tag: "shy" },
-    { tag: "blush, shy", aliases: ["blush shy", "shy blush", "blush, shy,"] }
+    { tag: "heart-shaped pupils", aliases: ['pleading eyes', "tareme", "wavy mouth"] },
+    { tag: "closing eyes", aliases: ["closed eyes", "eyes closing"] },
+    { tag: "serious eyes", aliases: ["closed eyes", "eyes closing"] }
 ];
 
-const EYE_EXPRESSION_TAGS: AllowedTag[] = [
-    { tag: "pleading eyes" },
-    { tag: "tareme" },
-    { tag: "heart-shaped pupils" },
-    { tag: "closing eyes", aliases: ["closed eyes", "eyes closing"] }
-];
-
-const MOUTH_EXPRESSION_TAGS: AllowedTag[] = [
-    { tag: "wavy mouth" }
-];
 
 const BODY_STATE_TAGS: AllowedTag[] = [
     { tag: "shaking" },
@@ -108,7 +85,8 @@ const SHOULDER_TAGS: AllowedTag[] = [
     { tag: "one bare shoulder" },
     { tag: "off shoulder" },
     { tag: "shoulder cutout" },
-    { tag: "sleeveless" }
+    { tag: "sleeveless" },
+    { tag: "covered shoulders" },
 ];
 
 const NECKWEAR_TAGS: AllowedTag[] = [
@@ -121,6 +99,7 @@ const NECKWEAR_TAGS: AllowedTag[] = [
 ];
 
 const UPPER_BODY_EXPOSURE_TAGS: AllowedTag[] = [
+    { tag: "closed clothes" },
     { tag: "open clothes, midriff" },
     { tag: "midriff" },
     { tag: "navel" },
@@ -255,6 +234,7 @@ const BACKGROUND_GROUP_TAGS: AllowedTag[] = [
     { tag: "kitchen" },
     { tag: "bathroom" },
     { tag: "classroom" },
+    { tag: "library" },
     { tag: "office" },
     { tag: "street" },
     { tag: "city" },
@@ -335,13 +315,6 @@ export async function generateVisualPromptPlan(input: {
         onActionCompositionSelectionError: input.onActionCompositionSelectionError
     };
 
-    await addTagsFromQuestion(plan, runtime, {
-        key: "subject",
-        question: "Which subject-count tags best describe the visible characters?",
-        allowedTags: SUBJECT_TAGS,
-        fallback: ["1girl", "solo"],
-        example: "The tags that describe the image are: 1girl, solo."
-    });
 
     plan.fixedTags.push(...await selectActionCompositionTreeTags({
         tree: input.actionCompositionTree,
@@ -366,38 +339,6 @@ export async function generateVisualPromptPlan(input: {
             fallback: "neutral expression",
             example: "2"
         });
-
-        await addDetachedOptionalTags(plan, runtime, {
-            key: "facial_expression_details",
-            introQuestion:
-                "For each possible facial-expression detail tag below, decide whether it is genuinely appropriate for visualizing this scene. Answer yes only if the detail is clearly visible. If unclear, answer no.",
-            allowedTags: FACIAL_EXPRESSION_DETAIL_TAGS,
-            fallback: [],
-            example: "No, there is no extra facial-expression detail that is clearly visible here."
-        });
-
-        if (regionVisible(visibleBodyRegions, ["eyes"])) {
-            await addDetachedOptionalTags(plan, runtime, {
-                key: "eye_expression_details",
-                introQuestion:
-                    "For each possible eye-expression or pupil detail tag below, decide whether it is genuinely appropriate for visualizing this scene. Answer yes only if the detail is clearly visible. If unclear, answer no.",
-                allowedTags: EYE_EXPRESSION_TAGS,
-                fallback: [],
-                example: "No, there is no extra eye-expression detail that is clearly visible here."
-            });
-        }
-
-        if (regionVisible(visibleBodyRegions, ["mouth"])) {
-            await addDetachedOptionalTags(plan, runtime, {
-                key: "mouth_expression_details",
-                introQuestion:
-                    "For each possible mouth-expression detail tag below, decide whether it is genuinely appropriate for visualizing this scene. Answer yes only if the detail is clearly visible. If unclear, answer no.",
-                allowedTags: MOUTH_EXPRESSION_TAGS,
-                fallback: [],
-                example: "No, there is no extra mouth-expression detail that is clearly visible here."
-            });
-        }
-
     }
 
     const motionEffectsVisible = await isVisible(runtime, {
@@ -433,7 +374,7 @@ export async function generateVisualPromptPlan(input: {
     const nakedVisible = await isVisible(runtime, {
         key: "naked_visible",
         target: "naked or nude body",
-        question: "Is the visible character naked or nude in the image?",
+        question: "Is the female character naked or nude at the point of the story?",
         fallback: false,
         example: "No, the character is wearing visible clothing."
     });
@@ -494,12 +435,7 @@ export async function generateVisualPromptPlan(input: {
                 });
             }
 
-            await addOpenClothesTagIfVisible(plan, runtime, {
-                key: "upper_clothing_open",
-                target: "upper clothing opening",
-                question: "Is the visible upper clothing open, parted, lifted, unbuttoned, or otherwise exposing the body?",
-                example: "Yes, the visible upper clothing is open."
-            });
+
         }
     }
 
@@ -512,14 +448,7 @@ export async function generateVisualPromptPlan(input: {
             example: "The tags that describe the image are: skirt, shorts."
         });
 
-        if (bottomwearTags.length) {
-            await addOpenClothesTagIfVisible(plan, runtime, {
-                key: "bottomwear_open",
-                target: "bottomwear opening or displacement",
-                question: "Is the visible bottomwear open, unzipped, parted, lifted, or displaced?",
-                example: "No, the bottomwear is not open or displaced."
-            });
-        }
+
     }
 
     if (regionVisible(visibleBodyRegions, ["underwear"])) {
@@ -531,12 +460,7 @@ export async function generateVisualPromptPlan(input: {
             example: "The tags that describe the image are: underwear, bra."
         });
 
-        await addOpenClothesTagIfVisible(plan, runtime, {
-            key: "underwear_revealed_by_open_clothes",
-            target: "open or displaced clothing revealing underwear",
-            question: "Is open or displaced clothing what reveals the visible underwear?",
-            example: "Yes, open clothing reveals the underwear."
-        });
+
     }
 
     if (regionVisible(visibleBodyRegions, ["legs"])) {
@@ -716,29 +640,6 @@ function clothingVisible(regions: string[]): boolean {
         "legs",
         "footwear"
     ]);
-}
-
-async function addOpenClothesTagIfVisible(
-    plan: VisualPromptPlan,
-    runtime: VisualPlannerRuntime,
-    input: {
-        key: string;
-        target: string;
-        question: string;
-        example: string;
-    }
-): Promise<void> {
-    const open = await isVisible(runtime, {
-        key: input.key,
-        target: input.target,
-        question: input.question,
-        fallback: false,
-        example: input.example
-    });
-
-    if (open) {
-        plan.fixedTags.push("open clothes");
-    }
 }
 
 function regionVisible(regions: string[], candidates: string[]): boolean {
