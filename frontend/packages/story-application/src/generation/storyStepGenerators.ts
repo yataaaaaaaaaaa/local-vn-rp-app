@@ -30,6 +30,7 @@ import {
 } from "./imageOutput";
 import { generateVisualPromptPlan } from "./visualPromptPlanner";
 import type { ResolverTextTraceEntry } from "./resolverTextTrace";
+import type { RpLlmTraceEntry, RpLlmTraceStepId } from "./rpLlmTrace";
 import type {
   ActionCompositionNode,
   ActionCompositionSelectionIssue
@@ -49,6 +50,7 @@ export interface StoryStepGenerationContext {
   actionCompositionSeed?: number;
   onActionCompositionSelectionError?: (issue: ActionCompositionSelectionIssue) => void;
   onResolverTextTrace?: (entries: ResolverTextTraceEntry[]) => void | Promise<void>;
+  onRpLlmTrace?: (entries: RpLlmTraceEntry[]) => void | Promise<void>;
   now?: () => Date;
   abortSignal?: AbortSignal;
 }
@@ -124,14 +126,15 @@ export async function generateUserTextStep(input: {
   document: StoryNodeFields;
   context: StoryStepGenerationContext;
 }): Promise<WorkflowGenerationResult<StoryWorkflowPayload>> {
+  const fullPrompt = buildAutomaticUserAnswerPrompt({
+    node: input.document,
+    storyId: input.context.storyId,
+    selectedNodeId: input.context.selectedNodeId
+  });
   const result = await input.context.backend.generateLlm(
     rpNovelLlmRequestConfig(
       input.context.config,
-      buildAutomaticUserAnswerPrompt({
-        node: input.document,
-        storyId: input.context.storyId,
-        selectedNodeId: input.context.selectedNodeId
-      }),
+      fullPrompt,
       {
         max_tokens: Math.min(input.context.config.llm.max_tokens, 40),
         stop: RP_DIALOGUE_STOP
@@ -139,10 +142,13 @@ export async function generateUserTextStep(input: {
     ),
     { signal: input.context.abortSignal }
   );
+  const userText = cleanUserTextOutput(result.text);
+
+  await recordRpLlmTrace(input.context, "userText", fullPrompt, result.text, userText);
 
   return {
     value: {
-      userText: cleanUserTextOutput(result.text)
+      userText
     }
   };
 }
@@ -151,14 +157,15 @@ export async function generateDialogueStep(input: {
   document: StoryNodeFields;
   context: StoryStepGenerationContext;
 }): Promise<WorkflowGenerationResult<StoryWorkflowPayload>> {
+  const fullPrompt = buildRpAnswerPrompt({
+    node: input.document,
+    storyId: input.context.storyId,
+    selectedNodeId: input.context.selectedNodeId
+  });
   const result = await input.context.backend.generateLlm(
     rpNovelLlmRequestConfig(
       input.context.config,
-      buildRpAnswerPrompt({
-        node: input.document,
-        storyId: input.context.storyId,
-        selectedNodeId: input.context.selectedNodeId
-      }),
+      fullPrompt,
       {
         max_tokens: Math.min(input.context.config.llm.max_tokens, 96),
         stop: RP_DIALOGUE_STOP
@@ -166,10 +173,13 @@ export async function generateDialogueStep(input: {
     ),
     { signal: input.context.abortSignal }
   );
+  const dialogue = cleanDialogueOutput(result.text);
+
+  await recordRpLlmTrace(input.context, "dialogue", fullPrompt, result.text, dialogue);
 
   return {
     value: {
-      dialogue: cleanDialogueOutput(result.text)
+      dialogue
     }
   };
 }
@@ -188,14 +198,15 @@ export async function generateVisualDescriptionStep(input: {
     };
   }
 
+  const fullPrompt = buildVisualRepresentationPrompt({
+    node: input.document,
+    storyId: input.context.storyId,
+    selectedNodeId: input.context.selectedNodeId
+  });
   const result = await input.context.backend.generateLlm(
     rpNovelLlmRequestConfig(
       input.context.config,
-      buildVisualRepresentationPrompt({
-        node: input.document,
-        storyId: input.context.storyId,
-        selectedNodeId: input.context.selectedNodeId
-      }),
+      fullPrompt,
       {
         max_tokens: Math.min(input.context.config.llm.max_tokens, 64),
         temperature: Math.min(input.context.config.llm.temperature, 0.35),
@@ -207,12 +218,38 @@ export async function generateVisualDescriptionStep(input: {
 
   const text = cleanVisualDescriptionOutput(result.text);
 
+  await recordRpLlmTrace(
+    input.context,
+    "visualDescription",
+    fullPrompt,
+    result.text,
+    text
+  );
+
   return {
     value: {
       visualDescription: text,
       resolverText: ""
     }
   };
+}
+
+async function recordRpLlmTrace(
+  context: StoryStepGenerationContext,
+  stepId: RpLlmTraceStepId,
+  fullPrompt: string,
+  rawAnswer: string,
+  answer: string
+): Promise<void> {
+  await context.onRpLlmTrace?.([
+    {
+      nodeId: context.selectedNodeId?.trim() || "unknown",
+      stepId,
+      fullPrompt,
+      rawAnswer,
+      answer
+    }
+  ]);
 }
 
 export async function generateResolverTextStep(input: {

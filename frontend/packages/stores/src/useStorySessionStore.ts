@@ -25,6 +25,7 @@ import {
   listStoryManifests,
   loadStoryBundle,
   appendResolverTextTraceEntries,
+  appendRpLlmTraceEntries,
   persistenceApi,
   saveStoryBundle
 } from "@local-vn/story-infrastructure";
@@ -90,6 +91,14 @@ export const storySessionController = new StorySessionController({
     resolverTextTraceSink: {
       appendResolverTextTrace: (input) =>
         appendResolverTextTraceEntries(
+          persistenceApi(),
+          input.storyId,
+          input.entries
+        )
+    },
+    rpLlmTraceSink: {
+      appendRpLlmTrace: (input) =>
+        appendRpLlmTraceEntries(
           persistenceApi(),
           input.storyId,
           input.entries

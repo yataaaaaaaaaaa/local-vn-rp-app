@@ -112,9 +112,34 @@ describe("RP novel prompts", () => {
     expect(prompt).toContain("VISUAL_CUE: Darkness stands beside an oak table.");
     expect(prompt).toContain("NPC: Give me your hand.");
     expect(prompt).toContain("Continue from LATEST_PREVIOUS_TURN");
+    expect(prompt).toContain("current turn has not started yet");
     expect(prompt).toContain("full accumulated story memory");
     expect(prompt).toContain("Do not write first-person prose");
+    expect(prompt).not.toContain("CURRENT_TURN:");
     expect(prompt).not.toContain("NPC: I am.\n\nCURRENT_TURN");
+  });
+
+  it("stages current-turn context per generation step", () => {
+    const node = {
+      context: "PREVIOUS_TURN:\nUSER: Are you ready?\nNPC: I am.",
+      userText: "Take my hand.",
+      dialogue: "Only if you keep up.",
+      visualDescription: "",
+      resolverText: "",
+      selectedTags: "",
+      danbotTags: "",
+      positivePrompt: "",
+      negativePrompt: "",
+      imageRef: ""
+    };
+
+    const npcPrompt = buildRpAnswerPrompt({ node: { ...node, dialogue: "" } });
+    const visualPrompt = buildVisualRepresentationPrompt({ node });
+
+    expect(npcPrompt).toContain("CURRENT_TURN:\nUSER: Take my hand.");
+    expect(npcPrompt).not.toContain("NPC_REPLY: Only if you keep up.");
+    expect(visualPrompt).toContain("CURRENT_TURN:\nUSER: Take my hand.\nNPC_REPLY: Only if you keep up.");
+    expect(visualPrompt).toContain("FULL_STORY_CONTEXT:");
   });
 
   it("cleans labels after generation instead of relying on brittle hard stops", () => {

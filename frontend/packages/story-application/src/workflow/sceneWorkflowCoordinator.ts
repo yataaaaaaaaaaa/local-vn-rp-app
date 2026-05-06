@@ -1039,6 +1039,7 @@ export class SceneWorkflowCoordinator {
       onActionCompositionSelectionError:
         this.services.actionCompositionTree?.reportSelectionIssue,
       onResolverTextTrace: this.createResolverTextTraceHandler(state.storyId),
+      onRpLlmTrace: this.createRpLlmTraceHandler(state.storyId),
       now: this.services.now,
       abortSignal
     };
@@ -1060,6 +1061,31 @@ export class SceneWorkflowCoordinator {
 
       try {
         await sink.appendResolverTextTrace({
+          storyId,
+          entries
+        });
+      } catch (error) {
+        this.services.onError?.(error);
+      }
+    };
+  }
+
+  private createRpLlmTraceHandler(
+    storyId: string | null
+  ): StoryStepGenerationContext["onRpLlmTrace"] | undefined {
+    const sink = this.services.rpLlmTraceSink;
+
+    if (!sink || !storyId) {
+      return undefined;
+    }
+
+    return async (entries) => {
+      if (entries.length === 0) {
+        return;
+      }
+
+      try {
+        await sink.appendRpLlmTrace({
           storyId,
           entries
         });

@@ -24,6 +24,7 @@ import type {
   ActionCompositionSelectionIssue
 } from "./generation/actionCompositionTree";
 import type { ResolverTextTraceEntry } from "./generation/resolverTextTrace";
+import type { RpLlmTraceEntry } from "./generation/rpLlmTrace";
 
 export interface StoryBackendRequestOptions {
   signal?: AbortSignal;
@@ -73,6 +74,13 @@ export interface ResolverTextTraceSink {
   }): Promise<void>;
 }
 
+export interface RpLlmTraceSink {
+  appendRpLlmTrace(input: {
+    storyId: string;
+    entries: RpLlmTraceEntry[];
+  }): Promise<void>;
+}
+
 export interface StoryPersistencePort {
   loadStory(storyId: string): Promise<StoryTreeBundle | null>;
   saveStory(bundle: StoryTreeBundle): Promise<void>;
@@ -91,6 +99,7 @@ export interface StorySessionServices {
   };
   autosave?: boolean;
   resolverTextTraceSink?: ResolverTextTraceSink;
+  rpLlmTraceSink?: RpLlmTraceSink;
   now?: () => Date;
   onError?: (error: unknown) => void;
 }

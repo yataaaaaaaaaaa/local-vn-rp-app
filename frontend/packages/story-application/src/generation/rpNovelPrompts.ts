@@ -47,29 +47,6 @@ function storyContextBlock(node: StoryNodeFields): string {
   ].join("\n");
 }
 
-function visualContextBlock(node: StoryNodeFields): string {
-  return [
-    "STORY_AND_CHARACTER_CONTEXT:",
-    compactVisualContext(node.context) || "(empty)"
-  ].join("\n");
-}
-
-function compactVisualContext(context: string): string {
-  const paragraphs = context
-    .split(/\n\s*\n/g)
-    .map((part) => part.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-
-  const useful = paragraphs.filter((part) =>
-    /\b(?:user|player|npc|woman|girl|man|character|wearing|clothing|outfit|hair|eyes?|pose|setting|scene|scenario|previous_turn|visual_cue|visible scene)\b/i.test(part)
-  );
-
-  return (useful.length ? useful : paragraphs)
-    .join("\n")
-    .slice(0, 1800)
-    .trim();
-}
-
 function currentUserTurnBlock(node: StoryNodeFields): string {
   return [
     "CURRENT_TURN:",
@@ -132,6 +109,7 @@ export function buildRpAnswerPrompt(input: RpPromptInput): string {
     "- End with complete terminal punctuation. Do not trail off mid-sentence.",
     "- Use FULL_STORY_CONTEXT as the full accumulated story memory from the initial setup through all previous dialogue and visual cues.",
     "- Continue from LATEST_PREVIOUS_TURN and CURRENT_TURN; do not replay or summarize earlier turns.",
+    "- Treat CURRENT_TURN USER as the player's latest line for this turn and answer it directly.",
     "- Do not write the player.",
     "- Do not write visual description.",
     "- NPC spoken dialogue may use first person.",
@@ -165,13 +143,14 @@ export function buildVisualRepresentationPrompt(input: RpPromptInput): string {
     "- Literal visible facts only.",
     "- Mention character count, pose, clothing, setting, props, lighting.",
     "- Preserve stable character identity and appearance from context; infer known visible traits from named characters when needed.",
+    "- Use FULL_STORY_CONTEXT as all previous turns, then use CURRENT_TURN as this turn's USER and NPC_REPLY.",
     "- No dialogue or quoted speech.",
     "- No thoughts or emotions that are not visible on the face/body.",
     "- No plot lore, source/fandom names, measurements, word counts, or checklists.",
     "- No Danbooru tags, comma-tag prompt syntax, LoRA syntax, JSON, headings, or markdown.",
     "- No prose style or dramatic narration.",
     "",
-    visualContextBlock(input.node),
+    storyContextBlock(input.node),
     "",
     previousVisualBlock(input.node),
     "",
@@ -193,7 +172,7 @@ export function buildAutomaticUserAnswerPrompt(input: RpPromptInput): string {
     "- One short VN textbox line.",
     "- Do not write the NPC.",
     "- Use FULL_STORY_CONTEXT as the full accumulated story memory from the initial setup through all previous dialogue and visual cues.",
-    "- Continue from LATEST_PREVIOUS_TURN; do not replay or summarize it.",
+    "- Continue from LATEST_PREVIOUS_TURN only; the current turn has not started yet.",
     "- Write the player's next spoken line or concise player intent only.",
     "- Do not write visual description, narration, ambience, or stage directions.",
     "- Do not write first-person prose like 'I lean closer' or action in asterisks.",
@@ -204,8 +183,6 @@ export function buildAutomaticUserAnswerPrompt(input: RpPromptInput): string {
     storyContextBlock(input.node),
     "",
     latestPreviousTurnBlock(input.node),
-    "",
-    currentResolvedTurnBlock(input.node),
     "",
     "FINAL TASK:",
     "Write USER_REPLY only.",

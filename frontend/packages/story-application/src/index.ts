@@ -8,6 +8,7 @@ export * from "./generation/generationConfigValidation";
 export * from "./generation/modelLoading";
 export * from "./generation/actionCompositionTree";
 export * from "./generation/resolverTextTrace";
+export * from "./generation/rpLlmTrace";
 
 export * from "./usecases/editStepField";
 export * from "./usecases/generateStepCandidate";
