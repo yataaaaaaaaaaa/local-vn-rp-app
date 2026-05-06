@@ -6,6 +6,7 @@ export interface FilePersistenceApi {
   writeJson(path: string, value: unknown): Promise<void>;
   readText(path: string, fallback?: string | null): Promise<string | null>;
   writeText(path: string, value: string): Promise<void>;
+  appendText(path: string, value: string): Promise<void>;
   exists(path: string): Promise<boolean>;
   remove(path: string): Promise<void>;
   ensureDir(path: string): Promise<void>;

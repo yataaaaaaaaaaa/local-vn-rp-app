@@ -7,6 +7,7 @@ export * from "./generation/imageOutput";
 export * from "./generation/generationConfigValidation";
 export * from "./generation/modelLoading";
 export * from "./generation/actionCompositionTree";
+export * from "./generation/resolverTextTrace";
 
 export * from "./usecases/editStepField";
 export * from "./usecases/generateStepCandidate";

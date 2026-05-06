@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("launcher", {
 contextBridge.exposeInMainWorld("appPersistence", {
   readText: (path: string, fallback: string | null = null) => ipcRenderer.invoke("persistence:readText", path, fallback),
   writeText: (path: string, value: string) => ipcRenderer.invoke("persistence:writeText", path, value),
+  appendText: (path: string, value: string) => ipcRenderer.invoke("persistence:appendText", path, value),
   readJson: <T>(path: string, fallback: T) => ipcRenderer.invoke("persistence:readJson", path, fallback),
   writeJson: (path: string, value: unknown) => ipcRenderer.invoke("persistence:writeJson", path, value),
   exists: (path: string) => ipcRenderer.invoke("persistence:exists", path),

@@ -36,6 +36,7 @@ export function storyDirectory(storyId: string): string { return `${storyRoot()}
 export function storyFile(storyId: string): string { return `${storyDirectory(storyId)}/story.json`; }
 export function storyTreeFile(storyId: string): string { return `${storyDirectory(storyId)}/tree.json`; }
 export function storyStateFile(storyId: string): string { return `${storyDirectory(storyId)}/zustand.story-state.json`; }
+export function storyResolverTextTraceFile(storyId: string): string { return `${storyDirectory(storyId)}/traces/resolver-text.jsonl`; }
 export function storyNodesDirectory(storyId: string): string { return `${storyDirectory(storyId)}/nodes`; }
 export function storyNodeFile(storyId: string, nodeId: string): string { return `${storyNodesDirectory(storyId)}/${safePathSegment(nodeId)}.json`; }
 export function outputDirectory(storyId: string): string { return `${outputRoot()}/${safePathSegment(storyId)}`; }

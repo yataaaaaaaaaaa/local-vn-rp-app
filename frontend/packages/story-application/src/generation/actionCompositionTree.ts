@@ -82,6 +82,13 @@ export async function selectActionCompositionTreeTags(input: {
             throw new ActionCompositionSelectionError(issue);
         }
 
+        input.runtime.trace?.recordBranchSelection({
+            question: current.question,
+            selectedBranch: next.name,
+            selectedPath: [...path, next.name],
+            associatedTags: [...selectedTags, ...cleanTags(next.content)]
+        });
+
         current = next;
         path.push(current.name);
     }

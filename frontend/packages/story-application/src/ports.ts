@@ -23,6 +23,7 @@ import type {
   ActionCompositionNode,
   ActionCompositionSelectionIssue
 } from "./generation/actionCompositionTree";
+import type { ResolverTextTraceEntry } from "./generation/resolverTextTrace";
 
 export interface StoryBackendRequestOptions {
   signal?: AbortSignal;
@@ -65,6 +66,13 @@ export interface StoryGenerationDeferPolicy {
   shouldDeferImage(): boolean;
 }
 
+export interface ResolverTextTraceSink {
+  appendResolverTextTrace(input: {
+    storyId: string;
+    entries: ResolverTextTraceEntry[];
+  }): Promise<void>;
+}
+
 export interface StoryPersistencePort {
   loadStory(storyId: string): Promise<StoryTreeBundle | null>;
   saveStory(bundle: StoryTreeBundle): Promise<void>;
@@ -82,6 +90,7 @@ export interface StorySessionServices {
     reportSelectionIssue(issue: ActionCompositionSelectionIssue): void;
   };
   autosave?: boolean;
+  resolverTextTraceSink?: ResolverTextTraceSink;
   now?: () => Date;
   onError?: (error: unknown) => void;
 }

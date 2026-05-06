@@ -20,6 +20,10 @@ import {
     type VisualPromptPlan
 } from "./visualPromptProtocol";
 import {
+    createResolverTextTraceRecorder,
+    type ResolverTextTraceEntry
+} from "./resolverTextTrace";
+import {
     hasTagAmong,
     type AllowedTag
 } from "./visualPromptTagHelpers";
@@ -288,6 +292,11 @@ const TIME_OF_DAY_TAGS: AllowedTag[] = [
     { tag: "midnight" }
 ];
 
+export interface VisualPromptPlanResult {
+    resolverText: string;
+    traceEntries: ResolverTextTraceEntry[];
+}
+
 export async function generateVisualPromptPlan(input: {
     backend: StoryGenerationBackend;
     config: BackendRuntimeConfig;
@@ -298,11 +307,14 @@ export async function generateVisualPromptPlan(input: {
     actionCompositionSeed?: number;
     onActionCompositionSelectionError?: (issue: ActionCompositionSelectionIssue) => void;
     abortSignal?: AbortSignal;
-}): Promise<string> {
+}): Promise<VisualPromptPlanResult> {
     const plan: VisualPromptPlan = {
         fixedTags: [],
         rawDanbotDescriptions: []
     };
+    const trace = createResolverTextTraceRecorder({
+        nodeId: input.selectedNodeId
+    });
 
     const runtime: VisualPlannerRuntime = {
         backend: input.backend,
@@ -312,7 +324,8 @@ export async function generateVisualPromptPlan(input: {
         selectedNodeId: input.selectedNodeId,
         facts: {},
         abortSignal: input.abortSignal,
-        onActionCompositionSelectionError: input.onActionCompositionSelectionError
+        onActionCompositionSelectionError: input.onActionCompositionSelectionError,
+        trace
     };
 
 
@@ -525,10 +538,15 @@ export async function generateVisualPromptPlan(input: {
         example: "The tag that describes the image is: night."
     });
 
-    return formatVisualPromptPlan({
-        fixedTags: dedupeTags(plan.fixedTags),
-        rawDanbotDescriptions: plan.rawDanbotDescriptions
-    });
+    const fixedTags = dedupeTags(plan.fixedTags);
+
+    return {
+        resolverText: formatVisualPromptPlan({
+            fixedTags,
+            rawDanbotDescriptions: plan.rawDanbotDescriptions
+        }),
+        traceEntries: trace.entries()
+    };
 }
 
 async function addFullOutfitTags(

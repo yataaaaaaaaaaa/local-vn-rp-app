@@ -5,6 +5,7 @@ import type { StoryGenerationBackend } from "../ports";
 import type { ActionCompositionSelectionIssue } from "./actionCompositionTree";
 import { rpNovelLlmRequestConfig } from "./llmRequestConfig";
 import { RP_NOVEL_STOP } from "./rpNovelPrompts";
+import type { ResolverTextTraceRecorder } from "./resolverTextTrace";
 import type { VisualPromptPlan } from "./visualPromptProtocol";
 import {
     extractAllowedTagsFromAnswer,
@@ -21,6 +22,7 @@ export interface VisualPlannerRuntime {
     facts: Record<string, string | boolean | string[]>;
     abortSignal?: AbortSignal;
     onActionCompositionSelectionError?: (issue: ActionCompositionSelectionIssue) => void;
+    trace?: ResolverTextTraceRecorder;
 }
 
 export async function askTagsFromQuestion(
@@ -33,7 +35,7 @@ export async function askTagsFromQuestion(
         example?: string;
     }
 ): Promise<string[]> {
-    const answer = await askRawLlmLine({
+    const response = await askRawLlmLine({
         runtime,
         question: buildNaturalTagQuestion({
             question: input.question,
@@ -45,12 +47,20 @@ export async function askTagsFromQuestion(
     });
 
     const tags = extractAllowedTagsFromAnswer(
-        answer,
+        response.answer,
         input.allowedTags,
         input.fallback ?? []
     );
 
     runtime.facts[input.key] = tags;
+    runtime.trace?.recordQuestion({
+        key: input.key,
+        kind: "tag_question",
+        fullPrompt: response.fullPrompt,
+        rawAnswer: response.rawAnswer,
+        answer: response.answer,
+        associatedTags: tags
+    });
 
     return tags;
 }
@@ -87,7 +97,7 @@ export async function addSingleTagChoiceByNumber(
         addToPlan?: boolean;
     }
 ): Promise<string | null> {
-    const answer = await askRawLlmLine({
+    const response = await askRawLlmLine({
         runtime,
         question: buildNumberedTagChoiceQuestion({
             question: input.question,
@@ -96,7 +106,7 @@ export async function addSingleTagChoiceByNumber(
         })
     });
 
-    const chosenIndex = parseNumberedChoiceAnswer(answer, input.allowedTags.length);
+    const chosenIndex = parseNumberedChoiceAnswer(response.answer, input.allowedTags.length);
     const chosenTag = chosenIndex === null
         ? input.fallback ?? null
         : input.allowedTags[chosenIndex].tag;
@@ -108,6 +118,15 @@ export async function addSingleTagChoiceByNumber(
 
         runtime.facts[input.key] = chosenTag;
     }
+
+    runtime.trace?.recordQuestion({
+        key: input.key,
+        kind: "numbered_choice",
+        fullPrompt: response.fullPrompt,
+        rawAnswer: response.rawAnswer,
+        answer: response.answer,
+        associatedTags: chosenTag ? [chosenTag] : []
+    });
 
     return chosenTag;
 }
@@ -121,7 +140,7 @@ export async function chooseNamedChildFromQuestion(
         example?: string;
     }
 ): Promise<string | null> {
-    const answer = await askRawLlmLine({
+    const response = await askRawLlmLine({
         runtime,
         question: buildNamedChildChoiceQuestion({
             question: input.question,
@@ -130,9 +149,17 @@ export async function chooseNamedChildFromQuestion(
         })
     });
 
-    const chosenIndex = parseOptionalNumberedChoiceAnswer(answer, input.choices.length);
+    const chosenIndex = parseOptionalNumberedChoiceAnswer(response.answer, input.choices.length);
     const chosenName = chosenIndex === null ? null : input.choices[chosenIndex];
     runtime.facts[input.key] = chosenName ?? "none";
+    runtime.trace?.recordQuestion({
+        key: input.key,
+        kind: "named_child_choice",
+        fullPrompt: response.fullPrompt,
+        rawAnswer: response.rawAnswer,
+        answer: response.answer,
+        associatedTags: []
+    });
 
     return chosenName;
 }
@@ -147,7 +174,7 @@ export async function isVisible(
         example?: string;
     }
 ): Promise<boolean> {
-    const answer = await askRawLlmLine({
+    const response = await askRawLlmLine({
         runtime,
         question: buildNaturalYesNoQuestion({
             question: input.question,
@@ -158,8 +185,16 @@ export async function isVisible(
         })
     });
 
-    const visible = parseYesNoAnswer(answer) ?? input.fallback ?? false;
+    const visible = parseYesNoAnswer(response.answer) ?? input.fallback ?? false;
     runtime.facts[input.key] = visible;
+    runtime.trace?.recordQuestion({
+        key: input.key,
+        kind: "yes_no",
+        fullPrompt: response.fullPrompt,
+        rawAnswer: response.rawAnswer,
+        answer: response.answer,
+        associatedTags: []
+    });
 
     return visible;
 }
@@ -173,7 +208,7 @@ export async function addRawDanbotDescription(
         example?: string;
     }
 ): Promise<string> {
-    const answer = await askRawLlmLine({
+    const response = await askRawLlmLine({
         runtime,
         question: buildNaturalRawDescriptionQuestion({
             question: input.question,
@@ -183,12 +218,21 @@ export async function addRawDanbotDescription(
         })
     });
 
-    const text = cleanRawDescription(answer);
+    const text = cleanRawDescription(response.answer);
 
     if (text) {
         plan.rawDanbotDescriptions.push(text);
         runtime.facts[input.key] = text;
     }
+
+    runtime.trace?.recordQuestion({
+        key: input.key,
+        kind: "raw_description",
+        fullPrompt: response.fullPrompt,
+        rawAnswer: response.rawAnswer,
+        answer: response.answer,
+        associatedTags: []
+    });
 
     return text;
 }
@@ -196,14 +240,19 @@ export async function addRawDanbotDescription(
 async function askRawLlmLine(input: {
     runtime: VisualPlannerRuntime;
     question: string;
-}): Promise<string> {
+}): Promise<{
+    fullPrompt: string;
+    rawAnswer: string;
+    answer: string;
+}> {
+    const fullPrompt = buildVisualPlannerPrompt({
+        runtime: input.runtime,
+        question: input.question
+    });
     const result = await input.runtime.backend.generateLlm(
         rpNovelLlmRequestConfig(
             input.runtime.config,
-            buildVisualPlannerPrompt({
-                runtime: input.runtime,
-                question: input.question
-            }),
+            fullPrompt,
             {
                 max_tokens: Math.min(input.runtime.config.llm.max_tokens, 80),
                 temperature: Math.min(input.runtime.config.llm.temperature, 0.15),
@@ -213,7 +262,11 @@ async function askRawLlmLine(input: {
         { signal: input.runtime.abortSignal }
     );
 
-    return cleanOneLineAnswer(result.text);
+    return {
+        fullPrompt,
+        rawAnswer: result.text,
+        answer: cleanOneLineAnswer(result.text)
+    };
 }
 
 function buildVisualPlannerPrompt(input: {

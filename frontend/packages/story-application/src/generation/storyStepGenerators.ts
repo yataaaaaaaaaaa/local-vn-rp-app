@@ -29,6 +29,7 @@ import {
   createImageRefPayload
 } from "./imageOutput";
 import { generateVisualPromptPlan } from "./visualPromptPlanner";
+import type { ResolverTextTraceEntry } from "./resolverTextTrace";
 import type {
   ActionCompositionNode,
   ActionCompositionSelectionIssue
@@ -47,6 +48,7 @@ export interface StoryStepGenerationContext {
   actionCompositionTree?: ActionCompositionNode | null;
   actionCompositionSeed?: number;
   onActionCompositionSelectionError?: (issue: ActionCompositionSelectionIssue) => void;
+  onResolverTextTrace?: (entries: ResolverTextTraceEntry[]) => void | Promise<void>;
   now?: () => Date;
   abortSignal?: AbortSignal;
 }
@@ -228,7 +230,7 @@ export async function generateResolverTextStep(input: {
     };
   }
 
-  const resolverText = await generateVisualPromptPlan({
+  const planResult = await generateVisualPromptPlan({
     backend: input.context.backend,
     config: input.context.config,
     node: input.document,
@@ -240,9 +242,11 @@ export async function generateResolverTextStep(input: {
     abortSignal: input.context.abortSignal
   });
 
+  await input.context.onResolverTextTrace?.(planResult.traceEntries);
+
   return {
     value: {
-      resolverText
+      resolverText: planResult.resolverText
     }
   };
 }

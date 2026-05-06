@@ -24,6 +24,7 @@ import type { StoryWorkflowSnapshot } from "@local-vn/story-domain";
 import {
   listStoryManifests,
   loadStoryBundle,
+  appendResolverTextTraceEntries,
   persistenceApi,
   saveStoryBundle
 } from "@local-vn/story-infrastructure";
@@ -85,6 +86,14 @@ export const storySessionController = new StorySessionController({
       getSeed: () => useResolverStore.getState().seed,
       reportSelectionIssue: (issue) =>
         useActionCompositionCorrectionStore.getState().open(issue)
+    },
+    resolverTextTraceSink: {
+      appendResolverTextTrace: (input) =>
+        appendResolverTextTraceEntries(
+          persistenceApi(),
+          input.storyId,
+          input.entries
+        )
     },
     autosave: true
   },

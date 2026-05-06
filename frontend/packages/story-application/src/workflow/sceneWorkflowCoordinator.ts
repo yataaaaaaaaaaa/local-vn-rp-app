@@ -1038,8 +1038,34 @@ export class SceneWorkflowCoordinator {
       actionCompositionSeed: this.services.actionCompositionTree?.getSeed() ?? 0,
       onActionCompositionSelectionError:
         this.services.actionCompositionTree?.reportSelectionIssue,
+      onResolverTextTrace: this.createResolverTextTraceHandler(state.storyId),
       now: this.services.now,
       abortSignal
+    };
+  }
+
+  private createResolverTextTraceHandler(
+    storyId: string | null
+  ): StoryStepGenerationContext["onResolverTextTrace"] | undefined {
+    const sink = this.services.resolverTextTraceSink;
+
+    if (!sink || !storyId) {
+      return undefined;
+    }
+
+    return async (entries) => {
+      if (entries.length === 0) {
+        return;
+      }
+
+      try {
+        await sink.appendResolverTextTrace({
+          storyId,
+          entries
+        });
+      } catch (error) {
+        this.services.onError?.(error);
+      }
     };
   }
 }

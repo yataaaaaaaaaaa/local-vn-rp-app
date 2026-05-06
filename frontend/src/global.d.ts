@@ -10,6 +10,7 @@ declare global {
     appPersistence: {
       readText(path: string, fallback?: string | null): Promise<string | null>;
       writeText(path: string, value: string): Promise<void>;
+      appendText(path: string, value: string): Promise<void>;
       readJson<T>(path: string, fallback: T): Promise<T>;
       writeJson(path: string, value: unknown): Promise<void>;
       exists(path: string): Promise<boolean>;

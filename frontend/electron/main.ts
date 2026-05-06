@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, OpenDialogOptions, shell } from "electron";
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, normalize, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
@@ -93,6 +93,11 @@ function registerPersistenceIpc(): void {
     const safePath = assertStoragePath(path);
     await mkdir(dirname(safePath), { recursive: true });
     await writeFile(safePath, value, "utf8");
+  });
+  ipcMain.handle("persistence:appendText", async (_event, path: string, value: string) => {
+    const safePath = assertStoragePath(path);
+    await mkdir(dirname(safePath), { recursive: true });
+    await appendFile(safePath, value, "utf8");
   });
   ipcMain.handle("persistence:readJson", async (_event, path: string, fallback: unknown) => {
     try {
