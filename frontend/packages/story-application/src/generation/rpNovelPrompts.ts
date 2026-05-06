@@ -101,6 +101,8 @@ export type ActorNameExtractionPromptResult = {
   prompt?: string;
 };
 
+export type ActorNameExtractionRunner = (prompt: string) => Promise<string>;
+
 export type RpPromptInput = {
   node: StoryNodeFields;
   storyId?: string | null;
@@ -480,7 +482,6 @@ function recentOutputToAvoidText(node: StoryNodeFields): string {
 function counterpartAdvancementDirectiveBlockTemplate(): string {
   return [
     "ADVANCEMENT_DIRECTIVE:",
-    "- Selected card: {{advancement.id}}.",
     "{{#advancement.isCommit}}- {{npc.Name}} must make a concrete decision: accept, refuse, redirect, warn, impose a condition, or force a practical next step.{{/advancement.isCommit}}",
     "{{#advancement.isObjectChange}}- {{npc.Name}} must change one visible or named object without controlling {{user.name}}.{{/advancement.isObjectChange}}",
     "{{#advancement.isEnvironmentChange}}- {{npc.possessive}} reply must make the local environment change in one concrete way.{{/advancement.isEnvironmentChange}}",
@@ -496,7 +497,9 @@ function counterpartAdvancementDirectiveBlockTemplate(): string {
     "- Do not repeat a prior signal, object change, environmental change, warning, line of dialogue, or visual cue.",
     "- Do not satisfy this with emotion, hesitation, silence, attraction, fear, or atmosphere.",
     "- Preserve agency for {{user.name}} completely."
-  ].join("\n");
+  ]
+    .join("\n")
+    .replace(/\n+/g, "\n");
 }
 
 function playerAdvancementDirectiveBlockTemplate(): string {
@@ -518,7 +521,9 @@ function playerAdvancementDirectiveBlockTemplate(): string {
     "- Do not repeat a prior signal, object change, environmental change, warning, line of dialogue, or visual cue.",
     "- Do not satisfy this with emotion, hesitation, silence, attraction, fear, or atmosphere.",
     "- Preserve agency for {{user.name}} completely."
-  ].join("\n");
+  ]
+    .join("\n")
+    .replace(/\n+/g, "\n");
 }
 
 function counterpartNoveltyRequestBlockTemplate(): string {
@@ -532,7 +537,9 @@ function counterpartNoveltyRequestBlockTemplate(): string {
     "- If an object, signal, warning, obstacle, route, mechanism, or line already changed recently, advance to its consequence instead of repeating it.",
     "- {{npc.Name}} may speak, but speech alone is not enough unless it creates a new obligation, choice, rule, refusal, or state change.",
     "{{#novelty.hasForbiddenFragments}}- Forbidden recent fragments:\n{{novelty.forbiddenFragmentsBlock}}{{/novelty.hasForbiddenFragments}}"
-  ].join("\n");
+  ]
+    .join("\n")
+    .replace(/\n+/g, "\n");
 }
 
 function playerNoveltyRequestBlockTemplate(): string {
@@ -798,6 +805,18 @@ export function buildRpAnswerPrompt(input: RpPromptInput): string {
   return buildRpAnswerPromptWithMetadata(input).prompt;
 }
 
+export async function buildRpAnswerPromptWithActorNameCache(
+  input: RpPromptInput,
+  runHiddenActorNameExtraction: ActorNameExtractionRunner
+): Promise<RpPromptBuildResult> {
+  const actorNames = await resolveActorNamesForPrompt(input, runHiddenActorNameExtraction);
+
+  return buildRpAnswerPromptWithMetadata({
+    ...input,
+    actorNames
+  });
+}
+
 function layoutVisualRepresentationPromptTemplate(): string {
   return [
     "You write simple literal visual cues for anime image tagging.",
@@ -843,6 +862,18 @@ export function buildVisualRepresentationPrompt(input: RpPromptInput): string {
   const data = buildPromptTemplateData(input);
 
   return renderPromptTemplate(template, data);
+}
+
+export async function buildVisualRepresentationPromptWithActorNameCache(
+  input: RpPromptInput,
+  runHiddenActorNameExtraction: ActorNameExtractionRunner
+): Promise<string> {
+  const actorNames = await resolveActorNamesForPrompt(input, runHiddenActorNameExtraction);
+
+  return buildVisualRepresentationPrompt({
+    ...input,
+    actorNames
+  });
 }
 
 function layoutAutomaticPlayerAnswerPromptTemplate(): string {
@@ -898,6 +929,18 @@ export function buildAutomaticUserAnswerPrompt(input: RpPromptInput): string {
   return buildAutomaticUserAnswerPromptWithMetadata(input).prompt;
 }
 
+export async function buildAutomaticUserAnswerPromptWithActorNameCache(
+  input: RpPromptInput,
+  runHiddenActorNameExtraction: ActorNameExtractionRunner
+): Promise<RpPromptBuildResult> {
+  const actorNames = await resolveActorNamesForPrompt(input, runHiddenActorNameExtraction);
+
+  return buildAutomaticUserAnswerPromptWithMetadata({
+    ...input,
+    actorNames
+  });
+}
+
 /**
  * Optional hidden prestep.
  *
@@ -929,6 +972,30 @@ export function buildActorNameExtractionPromptWithCache(
     cacheHit: false,
     prompt: buildActorNameExtractionPrompt(input.node)
   };
+}
+
+export async function resolveActorNamesForPrompt(
+  input: RpPromptInput,
+  runHiddenActorNameExtraction: ActorNameExtractionRunner
+): Promise<RpActorNames | null> {
+  if (input.actorNames) {
+    return normalizeActorNames(input.actorNames);
+  }
+
+  const extraction = buildActorNameExtractionPromptWithCache(input);
+
+  if (extraction.cacheHit) {
+    return extraction.actorNames ?? null;
+  }
+
+  if (!extraction.prompt) {
+    return null;
+  }
+
+  const raw = await runHiddenActorNameExtraction(extraction.prompt);
+  const parsed = parseActorNameExtractionOutput(raw);
+
+  return rememberActorNamesForPrompt(input, parsed).actorNames;
 }
 
 function layoutActorNameExtractionPromptTemplate(): string {
