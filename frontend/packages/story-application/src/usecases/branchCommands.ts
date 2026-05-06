@@ -203,9 +203,9 @@ export function duplicateCurrentBranch(
       },
       imageRefs: state.imageRefs[state.selectedNodeId]
         ? {
-            ...state.imageRefs,
-            [child.nodeId]: state.imageRefs[state.selectedNodeId]
-          }
+          ...state.imageRefs,
+          [child.nodeId]: state.imageRefs[state.selectedNodeId]
+        }
         : state.imageRefs,
       dirty: true,
       message: "Branch duplicated."
@@ -301,9 +301,9 @@ function unchanged(state: StorySessionState): BranchCommandResult {
 function buildChildContext(fields: StoryNodeFields): string {
   const previousTurn = [
     "PREVIOUS_TURN:",
-    fields.userText ? `USER: ${fields.userText}` : "",
-    fields.dialogue ? `NPC: ${fields.dialogue}` : "",
-    fields.visualDescription ? `VISUAL_CUE: ${fields.visualDescription}` : ""
+    fields.userText ? `{{user.name}}: ${fields.userText}` : "",
+    fields.dialogue ? `{{npc.name}}: ${fields.dialogue}` : "",
+    fields.visualDescription ? `visual description: ${fields.visualDescription}` : ""
   ]
     .map((part) => part.trim())
     .filter(Boolean)

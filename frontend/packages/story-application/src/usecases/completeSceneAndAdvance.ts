@@ -69,9 +69,9 @@ export function completeSceneAndAdvance(
 function buildNextSceneContext(fields: StoryNodeFields): string {
   const previousTurn = [
     "PREVIOUS_TURN:",
-    fields.userText ? `USER: ${fields.userText}` : "",
-    fields.dialogue ? `NPC: ${fields.dialogue}` : "",
-    fields.visualDescription ? `VISUAL_CUE: ${fields.visualDescription}` : ""
+    fields.userText ? `{{user.name}}: ${fields.userText}` : "",
+    fields.dialogue ? `{{npc.name}}: ${fields.dialogue}` : "",
+    fields.visualDescription ? `visual description: ${fields.visualDescription}` : ""
   ]
     .map((part) => part.trim())
     .filter(Boolean)

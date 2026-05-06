@@ -69,6 +69,11 @@ export interface ValidateSceneStepInput {
   reason?: "manual" | "auto" | "compat";
 }
 
+export interface ResumeSceneInput {
+  nodeId?: string | null;
+  preferredStepId?: StoryWorkflowStepId | null;
+}
+
 export class SceneWorkflowCoordinator {
   private currentRun: SceneWorkflowRun | null = null;
   private currentDeferredRun: DeferredGenerationRun | null = null;
@@ -77,7 +82,7 @@ export class SceneWorkflowCoordinator {
   public constructor(
     private readonly host: SceneWorkflowCoordinatorHost,
     private readonly services: StorySessionServices
-  ) {}
+  ) { }
 
   public async cancelAll(message = "Workflow cancelled."): Promise<void> {
     this.abortCurrentRun();
@@ -138,9 +143,11 @@ export class SceneWorkflowCoordinator {
     void this.host.saveStory();
   }
 
-  public async resumeScene(nodeId?: string | null): Promise<void> {
+  public async resumeScene(input: ResumeSceneInput | string | null = {}): Promise<void> {
     const state = this.host.getState();
-    const resolvedNodeId = nodeId ?? state.selectedNodeId;
+    const resolvedInput =
+      typeof input === "string" || input === null ? { nodeId: input } : input;
+    const resolvedNodeId = resolvedInput.nodeId ?? state.selectedNodeId;
 
     if (!state.tree || !resolvedNodeId) {
       return;
@@ -151,8 +158,8 @@ export class SceneWorkflowCoordinator {
     const fields = resolveStoryNodeFields(state.tree, resolvedNodeId);
     const workflowByNodeId = cloneWorkflowByNodeId(state.workflowByNodeId);
     const workflow = ensureWorkflowRecord(workflowByNodeId, resolvedNodeId, fields);
-    const stepId = selectSceneResumeStep(workflow);
-    workflow.frontierStepId = stepId;
+    const stepId = selectSceneResumeStep(workflow, resolvedInput.preferredStepId);
+    workflow.frontierStepId = selectResumeFrontierStep(workflow.frontierStepId, stepId);
     workflow.activeStepId = stepId;
 
     this.host.setState({
@@ -323,9 +330,9 @@ export class SceneWorkflowCoordinator {
         workflowByNodeId: result.workflowByNodeId,
         imageRefs: imageRef
           ? {
-              ...state.imageRefs,
-              [nodeId]: imageRef
-            }
+            ...state.imageRefs,
+            [nodeId]: imageRef
+          }
           : state.imageRefs,
         activeStepId: next ?? stepId,
         busy: false,
@@ -566,11 +573,11 @@ export class SceneWorkflowCoordinator {
 
         const applied = kind === "danbot"
           ? await this.generateDeferredDanbotForNode(run, nodeId, {
-              requireDeferred: scope === "deferred"
-            })
+            requireDeferred: scope === "deferred"
+          })
           : await this.generateDeferredImageForNode(run, nodeId, {
-              requireDeferred: scope === "deferred"
-            });
+            requireDeferred: scope === "deferred"
+          });
 
         if (!this.isCurrentDeferredRun(run)) {
           return;
@@ -597,16 +604,16 @@ export class SceneWorkflowCoordinator {
         busy: false,
         deferredBatchJob: latest.deferredBatchJob
           ? {
-              ...latest.deferredBatchJob,
-              status: "complete",
-              currentNodeId: null,
-              currentIndex: nodeIds.length,
-              completed,
-              message:
-                scope === "deferred"
-                  ? "Deferred generation complete."
-                  : "Story regeneration complete."
-            }
+            ...latest.deferredBatchJob,
+            status: "complete",
+            currentNodeId: null,
+            currentIndex: nodeIds.length,
+            completed,
+            message:
+              scope === "deferred"
+                ? "Deferred generation complete."
+                : "Story regeneration complete."
+          }
           : null,
         dirty: true,
         message:
@@ -625,10 +632,10 @@ export class SceneWorkflowCoordinator {
         busy: false,
         deferredBatchJob: latest.deferredBatchJob
           ? {
-              ...latest.deferredBatchJob,
-              status: "failed",
-              message: error instanceof Error ? error.message : String(error)
-            }
+            ...latest.deferredBatchJob,
+            status: "failed",
+            message: error instanceof Error ? error.message : String(error)
+          }
           : null,
         message: error instanceof Error ? error.message : String(error)
       }));
@@ -848,9 +855,9 @@ export class SceneWorkflowCoordinator {
       workflowByNodeId: committed.workflowByNodeId,
       imageRefs: imageRef
         ? {
-            ...latestState.imageRefs,
-            [nodeId]: imageRef
-          }
+          ...latestState.imageRefs,
+          [nodeId]: imageRef
+        }
         : latestState.imageRefs,
       dirty: true,
       message: "Deferred image scene updated."
@@ -871,9 +878,9 @@ export class SceneWorkflowCoordinator {
     this.host.setState((state) => ({
       deferredBatchJob: state.deferredBatchJob
         ? {
-            ...state.deferredBatchJob,
-            ...patch
-          }
+          ...state.deferredBatchJob,
+          ...patch
+        }
         : state.deferredBatchJob
     }));
   }
@@ -1141,7 +1148,11 @@ export class SceneWorkflowCoordinator {
 }
 
 export function selectSceneResumeStep(
-  workflow: { stepStates: Partial<Record<StoryWorkflowStepId, { status?: string }>> }
+  workflow: {
+    frontierStepId?: StoryWorkflowStepId;
+    stepStates: Partial<Record<StoryWorkflowStepId, { status?: string }>>;
+  },
+  preferredStepId?: StoryWorkflowStepId | null
 ): StoryWorkflowStepId {
   const generatingStep = storyWorkflowStepIds.find(
     (stepId) => workflow.stepStates[stepId]?.status === "generating"
@@ -1151,11 +1162,39 @@ export function selectSceneResumeStep(
     return generatingStep;
   }
 
+  if (preferredStepId) {
+    return selectClosestAvailableSceneStep(workflow, preferredStepId);
+  }
+
   return (
     storyWorkflowStepIds.find(
       (stepId) => !isWorkflowStepCompleteForResume(workflow.stepStates[stepId]?.status)
     ) ?? storyWorkflowStepIds[storyWorkflowStepIds.length - 1]
   );
+}
+
+export function selectClosestAvailableSceneStep(
+  workflow: {
+    frontierStepId?: StoryWorkflowStepId;
+    stepStates: Partial<Record<StoryWorkflowStepId, { status?: string }>>;
+  },
+  preferredStepId: StoryWorkflowStepId
+): StoryWorkflowStepId {
+  const frontierStepId = workflow.frontierStepId ?? selectSceneResumeStep(workflow);
+  const preferredIndex = storyWorkflowStepIds.indexOf(preferredStepId);
+  const frontierIndex = storyWorkflowStepIds.indexOf(frontierStepId);
+
+  return storyWorkflowStepIds[Math.min(preferredIndex, frontierIndex)];
+}
+
+function selectResumeFrontierStep(
+  frontierStepId: StoryWorkflowStepId,
+  activeStepId: StoryWorkflowStepId
+): StoryWorkflowStepId {
+  const frontierIndex = storyWorkflowStepIds.indexOf(frontierStepId);
+  const activeIndex = storyWorkflowStepIds.indexOf(activeStepId);
+
+  return storyWorkflowStepIds[Math.max(frontierIndex, activeIndex)];
 }
 
 export function shouldGenerateOnSceneEntry(
@@ -1236,9 +1275,9 @@ function deferredInputFingerprint(
       negativePrompt: fields.negativePrompt,
       danbot: config
         ? {
-            model_path: config.danbot.model_path,
-            max_tags: config.danbot.max_tags
-          }
+          model_path: config.danbot.model_path,
+          max_tags: config.danbot.max_tags
+        }
         : null
     });
   }
@@ -1249,16 +1288,16 @@ function deferredInputFingerprint(
       negativePrompt: fields.negativePrompt,
       image: config
         ? {
-            model_path: config.image.model_path,
-            model_type: config.image.model_type,
-            default_width: config.image.default_width,
-            default_height: config.image.default_height,
-            default_steps: config.image.default_steps,
-            default_cfg_scale: config.image.default_cfg_scale,
-            sampler: config.image.sampler,
-            scheduler: config.image.scheduler,
-            manual_lora_paths: config.image.manual_lora_paths
-          }
+          model_path: config.image.model_path,
+          model_type: config.image.model_type,
+          default_width: config.image.default_width,
+          default_height: config.image.default_height,
+          default_steps: config.image.default_steps,
+          default_cfg_scale: config.image.default_cfg_scale,
+          sampler: config.image.sampler,
+          scheduler: config.image.scheduler,
+          manual_lora_paths: config.image.manual_lora_paths
+        }
         : null
     });
   }

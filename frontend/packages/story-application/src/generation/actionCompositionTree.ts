@@ -182,8 +182,8 @@ function buildSelectionIssue(
     return {
         storyContext: [
             node.context.trim() ? `CONTEXT:\n${node.context.trim()}` : "",
-            node.userText.trim() ? `USER:\n${node.userText.trim()}` : "",
-            node.dialogue.trim() ? `NPC:\n${node.dialogue.trim()}` : ""
+            node.userText.trim() ? `{{user.name}}:\n${node.userText.trim()}` : "",
+            node.dialogue.trim() ? `{{npc.name}}:\n${node.dialogue.trim()}` : ""
         ].filter(Boolean).join("\n\n"),
         visualContext: node.visualDescription.trim(),
         nodePath: path,

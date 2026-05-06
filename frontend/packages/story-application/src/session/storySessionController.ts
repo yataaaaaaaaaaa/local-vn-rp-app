@@ -529,12 +529,13 @@ export class StorySessionController {
       return;
     }
 
+    const preferredStepId = this.state.activeStepId;
     this.state = result.state;
     this.emit();
 
     if (result.changed) {
       void this.saveStory();
-      this.resumeSceneInBackground(result.state.selectedNodeId);
+      this.resumeSceneInBackground(result.state.selectedNodeId, preferredStepId);
     }
   }
 
@@ -553,10 +554,15 @@ export class StorySessionController {
     }
   }
 
-  private resumeSceneInBackground(nodeId?: string | null): void {
-    void this.workflowCoordinator.resumeScene(nodeId).catch((error) => {
-      this.handleError(error);
-    });
+  private resumeSceneInBackground(
+    nodeId?: string | null,
+    preferredStepId?: StoryWorkflowStepId | null
+  ): void {
+    void this.workflowCoordinator
+      .resumeScene({ nodeId, preferredStepId })
+      .catch((error) => {
+        this.handleError(error);
+      });
   }
 
   private async runBusy(work: () => Promise<void>): Promise<void> {

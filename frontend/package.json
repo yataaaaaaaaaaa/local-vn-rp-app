@@ -16,11 +16,13 @@
   },
   "dependencies": {
     "@replayable-text-tree/core": "file:D:/Anything/libs/replayable-text-tree",
+    "@types/mustache": "^4.2.6",
     "@vitejs/plugin-react": "latest",
     "@xyflow/react": "latest",
     "danbooru-tag-resolver": "file:D:/Anything/libs/danbooru-tag-resolver",
     "electron": "latest",
     "elkjs": "latest",
+    "mustache": "^4.2.0",
     "react": "latest",
     "react-dom": "latest",
     "typescript": "latest",
