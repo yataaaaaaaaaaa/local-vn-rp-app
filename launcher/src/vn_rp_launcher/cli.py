@@ -1,11 +1,22 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 from devlauncher import LauncherApp, http_post, http_ready, repo_root, require, service
 
 PROJECT_NAME: str = "local-vn-rp-app"
+
+
+def _consume_flag(name: str) -> bool:
+    if name not in sys.argv[1:]:
+        return False
+    sys.argv[:] = [sys.argv[0], *(arg for arg in sys.argv[1:] if arg != name)]
+    return True
+
+
+DEV_MODE: bool = _consume_flag("--dev") or os.environ.get("LOCAL_VN_RP_DEV", "").strip().lower() in {"1", "true", "yes", "on"}
 
 BACKEND_HOST: str = os.environ.get("LOCAL_VN_RP_BACKEND_HOST", "127.0.0.1")
 BACKEND_PORT: int = int(os.environ.get("LOCAL_VN_RP_BACKEND_PORT", "17860"))
@@ -15,7 +26,7 @@ STORY_ROOT: str = os.environ.get("LOCAL_VN_RP_STORY_ROOT", f"{APP_ROOT}/stories"
 OUTPUT_ROOT: str = os.environ.get("LOCAL_VN_RP_OUTPUT_ROOT", f"{APP_ROOT}/outputs")
 PROMPT_LOG_PATH: str = os.environ.get("LOCAL_VN_RP_PROMPT_LOG_PATH", "")
 
-FRONTEND_MODE: str = os.environ.get("LOCAL_VN_RP_FRONTEND_MODE", "electron").strip().lower()
+FRONTEND_MODE: str = ("dev" if DEV_MODE else os.environ.get("LOCAL_VN_RP_FRONTEND_MODE", "electron")).strip().lower()
 
 
 def _next_prompt_log_path(app_root: str) -> str:
@@ -45,8 +56,39 @@ def _frontend_command() -> list[str]:
         "--story-root={story_root}",
         "--output-root={output_root}",
     ]
-    script = "product-test:frontend" if FRONTEND_MODE in {"product-test", "test", "smoke-test"} else "electron:auto"
+    script = (
+        "product-test:frontend"
+        if FRONTEND_MODE in {"product-test", "test", "smoke-test"}
+        else "electron:dev"
+        if FRONTEND_MODE in {"dev", "development"}
+        else "electron:auto"
+    )
     return ["npm", "run", script, "--", *launcher_args]
+
+
+def _backend_command() -> list[str]:
+    module = "local_vn_rp_backend.dev_server" if DEV_MODE else "local_vn_rp_backend.simple_server"
+    return [
+        "uv",
+        "run",
+        "python",
+        "-m",
+        module,
+        "--host",
+        "{host}",
+        "--port",
+        "{backend_port}",
+        "--project-name",
+        "{project_name}",
+        "--app-root",
+        "{app_root}",
+        "--story-root",
+        "{story_root}",
+        "--output-root",
+        "{output_root}",
+        "--prompt-log-path",
+        "{prompt_log_path}",
+    ]
 
 
 def _frontend_requirements() -> tuple[object, ...]:
@@ -77,27 +119,7 @@ app = LauncherApp(
     services=(
         service(
             "backend",
-            cmd=[
-                "uv",
-                "run",
-                "python",
-                "-m",
-                "local_vn_rp_backend.simple_server",
-                "--host",
-                "{host}",
-                "--port",
-                "{backend_port}",
-                "--project-name",
-                "{project_name}",
-                "--app-root",
-                "{app_root}",
-                "--story-root",
-                "{story_root}",
-                "--output-root",
-                "{output_root}",
-                "--prompt-log-path",
-                "{prompt_log_path}",
-            ],
+            cmd=_backend_command(),
             cwd="backend",
             requires=(
                 require.tool("uv"),

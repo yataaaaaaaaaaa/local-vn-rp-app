@@ -12,7 +12,8 @@
     "test": "vitest run",
     "product-test:frontend": "node scripts/product-test-frontend.mjs",
     "electron:run": "electron dist-electron/main.js",
-    "electron:auto": "node scripts/electron-auto-start.mjs"
+    "electron:auto": "node scripts/electron-auto-start.mjs",
+    "electron:dev": "node scripts/electron-dev-start.mjs"
   },
   "dependencies": {
     "@replayable-text-tree/core": "file:D:/Anything/libs/replayable-text-tree",

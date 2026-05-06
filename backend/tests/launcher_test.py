@@ -40,6 +40,13 @@ class LauncherConfigTest(unittest.TestCase):
         self.assertNotIn("--llama-server-path", source)
 
 
+
+    def test_dev_mode_uses_watch_frontend_and_backend_commands(self) -> None:
+        source = LAUNCHER_CLI.read_text(encoding="utf-8")
+        self.assertIn('DEV_MODE: bool = _consume_flag("--dev")', source)
+        self.assertIn('"local_vn_rp_backend.dev_server" if DEV_MODE else "local_vn_rp_backend.simple_server"', source)
+        self.assertIn('"electron:dev"', source)
+
     def test_frontend_service_runs_inside_frontend_project(self) -> None:
         source = LAUNCHER_CLI.read_text(encoding="utf-8")
         self.assertIn('cwd="frontend"', source)
