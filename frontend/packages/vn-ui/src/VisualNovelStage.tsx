@@ -111,7 +111,11 @@ export function VisualNovelStage() {
   const isCurrentStepUserText = currentStepIndex === userTextStepIndex;
   const isAfterUserTextStep =
     currentStepIndex > userTextStepIndex || isGeneratingAfterUserText;
-  const displayedAutoUserText = isAfterUserTextStep
+  const isBeforeUserTextStep =
+    currentStepIndex < userTextStepIndex && !isGeneratingUserText;
+  const displayedAutoUserText = isBeforeUserTextStep
+    ? parentNode.userText
+    : isAfterUserTextStep
     ? node.userText
     : generateUserAnswerFromLlm && (isCurrentStepUserText || isGeneratingUserText)
       ? streamedUserText || node.userText
@@ -145,8 +149,6 @@ export function VisualNovelStage() {
     }
 
     await submitUserTextToStory(text);
-
-    setUserText("");
   }
 
   return (
