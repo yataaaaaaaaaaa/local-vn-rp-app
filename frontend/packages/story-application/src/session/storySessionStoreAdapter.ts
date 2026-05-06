@@ -54,6 +54,9 @@ export function createStorySessionStoreState(
     ) => controller.continueFrom(stepId, nodeId),
     setStepAutoValidate: (stepId: StoryWorkflowStepId, enabled: boolean) =>
       controller.setStepAutoValidate(stepId, enabled),
+    generateDeferredDanbot: () => controller.generateDeferredDanbot(),
+    generateDeferredImages: () => controller.generateDeferredImages(),
+    cancelDeferredGeneration: () => controller.cancelDeferredGeneration(),
     applyPresetContext: (context: string) =>
       controller.applyPresetContext(context),
     applyResolverResult: (input: {

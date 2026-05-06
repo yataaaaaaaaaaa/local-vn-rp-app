@@ -20,6 +20,18 @@ export interface StorySessionRunningJob {
   stepId: StoryWorkflowStepId;
 }
 
+export interface StorySessionDeferredBatchJob {
+  id: string;
+  kind: "danbot" | "image";
+  status: "running" | "complete" | "cancelled" | "failed";
+  currentNodeId: string | null;
+  currentIndex: number;
+  total: number;
+  completed: number;
+  startedAt: string;
+  message: string | null;
+}
+
 export interface StorySessionState {
   storyId: string | null;
   manifest: StoryManifest | null;
@@ -31,6 +43,7 @@ export interface StorySessionState {
   workflowByNodeId: StoryWorkflowByNodeId;
   activeStepId: StoryWorkflowStepId;
   runningJob: StorySessionRunningJob | null;
+  deferredBatchJob: StorySessionDeferredBatchJob | null;
   autoValidateGeneratedCandidateByStepId: StoryWorkflowAutoValidateByStepId;
   busy: boolean;
   message: string | null;
@@ -81,6 +94,9 @@ export interface StorySessionActions {
     nodeId?: string | null
   ): Promise<void>;
   setStepAutoValidate(stepId: StoryWorkflowStepId, enabled: boolean): void;
+  generateDeferredDanbot(): Promise<void>;
+  generateDeferredImages(): Promise<void>;
+  cancelDeferredGeneration(): Promise<void>;
   applyPresetContext(context: string): Promise<void>;
   applyResolverResult(input: {
     rawText: string;
@@ -116,6 +132,7 @@ export function createInitialStorySessionState(
     workflowByNodeId: {},
     activeStepId: "context",
     runningJob: null,
+    deferredBatchJob: null,
     autoValidateGeneratedCandidateByStepId: {
       ...defaultStoryWorkflowAutoValidateGeneratedCandidate
     },

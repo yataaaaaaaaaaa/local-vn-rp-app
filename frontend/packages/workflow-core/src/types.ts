@@ -7,6 +7,7 @@ export type WorkflowStepStatus =
   | "generating"
   | "candidate"
   | "validated"
+  | "deferred"
   | "invalidated"
   | "failed";
 
@@ -16,6 +17,8 @@ export interface WorkflowStepState<TPayload> {
   edited: TPayload | null;
   error?: string;
   warnings?: string[];
+  deferredInputFingerprint?: string;
+  deferredAt?: string;
 }
 
 export type WorkflowStepsState<TStepId extends string, TPayload> = Partial<

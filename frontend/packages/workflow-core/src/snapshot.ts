@@ -92,7 +92,9 @@ export function cloneWorkflowStepState<TPayload>(
     generated: clonePayload(state.generated),
     edited: clonePayload(state.edited),
     error: state.error,
-    warnings: state.warnings ? [...state.warnings] : undefined
+    warnings: state.warnings ? [...state.warnings] : undefined,
+    deferredInputFingerprint: state.deferredInputFingerprint,
+    deferredAt: state.deferredAt
   };
 }
 

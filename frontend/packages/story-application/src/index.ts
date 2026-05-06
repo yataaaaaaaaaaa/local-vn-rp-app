@@ -11,6 +11,7 @@ export * from "./generation/actionCompositionTree";
 export * from "./usecases/editStepField";
 export * from "./usecases/generateStepCandidate";
 export * from "./usecases/commitStep";
+export * from "./usecases/deferStep";
 export * from "./workflow/sceneWorkflowCoordinator";
 export * from "./usecases/completeSceneAndAdvance";
 export * from "./usecases/applyPresetContext";

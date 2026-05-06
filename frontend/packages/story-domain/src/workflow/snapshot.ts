@@ -189,7 +189,12 @@ function coerceStepState(
     error: typeof value.error === "string" ? value.error : undefined,
     warnings: Array.isArray(value.warnings)
       ? value.warnings.filter((warning): warning is string => typeof warning === "string")
-      : undefined
+      : undefined,
+    deferredInputFingerprint:
+      typeof value.deferredInputFingerprint === "string"
+        ? value.deferredInputFingerprint
+        : undefined,
+    deferredAt: typeof value.deferredAt === "string" ? value.deferredAt : undefined
   };
 }
 
@@ -231,6 +236,7 @@ function isWorkflowStepStatus(value: unknown): value is WorkflowStepStatus {
     value === "generating" ||
     value === "candidate" ||
     value === "validated" ||
+    value === "deferred" ||
     value === "invalidated" ||
     value === "failed"
   );

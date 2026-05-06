@@ -332,6 +332,18 @@ export class StorySessionController {
     this.workflowCoordinator.setStepAutoValidate(stepId, enabled);
   }
 
+  public async generateDeferredDanbot(): Promise<void> {
+    await this.workflowCoordinator.generateDeferredDanbot();
+  }
+
+  public async generateDeferredImages(): Promise<void> {
+    await this.workflowCoordinator.generateDeferredImages();
+  }
+
+  public async cancelDeferredGeneration(): Promise<void> {
+    await this.workflowCoordinator.cancelDeferredGeneration();
+  }
+
   public async applyPresetContext(context: string): Promise<void> {
     if (!this.state.tree || !this.state.selectedNodeId) {
       return;

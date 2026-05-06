@@ -1,3 +1,4 @@
+import type { TextTree } from "@replayable-text-tree/core";
 import {
   cloneWorkflowByNodeId,
   editStoryNodeFields,
@@ -9,60 +10,45 @@ import {
   type StoryWorkflowSnapshot,
   type StoryWorkflowStepId
 } from "@local-vn/story-domain";
-import type { TextTree } from "@replayable-text-tree/core";
-import { markWorkflowStepValidated } from "@local-vn/workflow-core";
+import { markWorkflowStepDeferred } from "@local-vn/workflow-core";
 
-export interface CommitStepInput {
+export interface DeferStepInput {
   tree: TextTree;
   workflowByNodeId: StoryWorkflowByNodeId;
   nodeId: string;
   fields: StoryNodeFields;
   stepId: StoryWorkflowStepId;
+  payload: StoryWorkflowPayload;
+  inputFingerprint?: string;
 }
 
-export interface CommitStepResult {
+export interface DeferStepResult {
   tree: TextTree;
   workflowByNodeId: StoryWorkflowByNodeId;
   workflow: StoryWorkflowSnapshot;
   payload: StoryWorkflowPayload;
 }
 
-export function commitStep(input: CommitStepInput): CommitStepResult {
+export function deferStep(input: DeferStepInput): DeferStepResult {
   const workflowByNodeId = cloneWorkflowByNodeId(input.workflowByNodeId);
   const workflow = ensureWorkflowRecord(
     workflowByNodeId,
     input.nodeId,
     input.fields
   );
-
-  const stepState = workflow.stepStates[input.stepId];
-
-  const payload =
-    stepState?.edited ??
-    stepState?.generated ??
-    readFields(input.fields, input.stepId);
-
+  const payload = input.payload;
   const tree = editStoryNodeFields(
     input.tree,
     input.nodeId,
     filterStringPayload(payload)
   );
 
-  markWorkflowStepValidated(
+  markWorkflowStepDeferred(
     workflow,
     input.stepId,
-    () => readFields(input.fields, input.stepId)
+    payload,
+    input.inputFingerprint
   );
-
-  workflow.stepStates[input.stepId] = {
-    ...workflow.stepStates[input.stepId],
-    status: "validated",
-    generated: stepState?.generated ?? payload,
-    edited: payload,
-    error: undefined,
-    deferredInputFingerprint: undefined,
-    deferredAt: undefined
-  };
 
   return {
     tree,

@@ -47,3 +47,11 @@ export function getSiblingIds(
 
   return getChildIds(tree, parentId);
 }
+
+export function getStoryNodeIds(
+  tree: TextTree | null | undefined
+): string[] {
+  const nodes = (tree as TreeWithNodeRecords | null | undefined)?.nodes;
+
+  return nodes ? Object.keys(nodes) : [];
+}

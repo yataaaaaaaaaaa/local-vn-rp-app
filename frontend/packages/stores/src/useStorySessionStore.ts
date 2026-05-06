@@ -74,6 +74,12 @@ export const storySessionController = new StorySessionController({
       shouldAutoGenerateUserText: () =>
         useFrontendPreferencesStore.getState().generateUserAnswerFromLlm
     },
+    generationDeferPolicy: {
+      shouldDeferDanbot: () =>
+        useFrontendPreferencesStore.getState().deferDanbotGeneration,
+      shouldDeferImage: () =>
+        useFrontendPreferencesStore.getState().deferImageGeneration
+    },
     actionCompositionTree: {
       getTree: () => useActionCompositionTreeStore.getState().tree,
       getSeed: () => useResolverStore.getState().seed,

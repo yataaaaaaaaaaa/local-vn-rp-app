@@ -60,6 +60,11 @@ export interface StoryUserInputPolicy {
   shouldAutoGenerateUserText(): boolean;
 }
 
+export interface StoryGenerationDeferPolicy {
+  shouldDeferDanbot(): boolean;
+  shouldDeferImage(): boolean;
+}
+
 export interface StoryPersistencePort {
   loadStory(storyId: string): Promise<StoryTreeBundle | null>;
   saveStory(bundle: StoryTreeBundle): Promise<void>;
@@ -70,6 +75,7 @@ export interface StorySessionServices {
   backend: StoryGenerationBackend & StoryModelLoadingBackend & StoryRuntimeControlBackend;
   persistence: StoryPersistencePort;
   userInputPolicy?: StoryUserInputPolicy;
+  generationDeferPolicy?: StoryGenerationDeferPolicy;
   actionCompositionTree?: {
     getTree(): ActionCompositionNode | null;
     getSeed(): number;

@@ -636,6 +636,10 @@ code {
   border-color: rgba(145, 241, 183, 0.55);
 }
 
+.workflow-step-tab.status-deferred:not(.is-selected) {
+  border-color: rgba(255, 210, 141, 0.62);
+}
+
 .workflow-step-tab.status-failed:not(.is-selected) {
   border-color: rgba(255, 138, 138, 0.65);
 }
@@ -919,6 +923,36 @@ code {
 .image-summary-meta dd {
   margin: 0.15rem 0 0;
   word-break: break-all;
+}
+
+.deferred-generation-panel {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.deferred-generation-panel .panel-header {
+  margin-bottom: 0;
+}
+
+.deferred-generation-panel .panel-header p {
+  margin: 0.2rem 0 0;
+}
+
+.deferred-generation-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.deferred-generation-progress {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.deferred-generation-progress .workflow-progress,
+.deferred-generation-progress .workflow-message {
+  margin-bottom: 0;
 }
 
 @keyframes workflow-pulse {

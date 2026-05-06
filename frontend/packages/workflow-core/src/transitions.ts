@@ -75,6 +75,30 @@ export function markWorkflowStepValidated<TStepId extends string, TPayload>(
   return snapshot;
 }
 
+export function markWorkflowStepDeferred<TStepId extends string, TPayload>(
+  snapshot: WorkflowSnapshot<TStepId, TPayload>,
+  stepId: TStepId,
+  value: TPayload,
+  inputFingerprint?: string,
+  deferredAt = new Date().toISOString()
+): WorkflowSnapshot<TStepId, TPayload> {
+  snapshot.stepStates[stepId] = {
+    status: "deferred",
+    generated: value,
+    edited: value,
+    error: undefined,
+    warnings: ["Generation deferred."],
+    deferredInputFingerprint: inputFingerprint,
+    deferredAt
+  };
+
+  snapshot.machineState = "editing";
+  snapshot.activeStepId = stepId;
+  snapshot.frontierStepId = stepId;
+
+  return snapshot;
+}
+
 export function markWorkflowStepFailed<TStepId extends string, TPayload>(
   snapshot: WorkflowSnapshot<TStepId, TPayload>,
   stepId: TStepId,
