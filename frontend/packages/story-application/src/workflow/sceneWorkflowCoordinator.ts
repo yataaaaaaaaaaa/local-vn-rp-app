@@ -365,11 +365,19 @@ export class SceneWorkflowCoordinator {
   }
 
   public async generateDeferredDanbot(): Promise<void> {
-    await this.runDeferredBatch("danbot");
+    await this.runDeferredBatch("danbot", "deferred");
   }
 
   public async generateDeferredImages(): Promise<void> {
-    await this.runDeferredBatch("image");
+    await this.runDeferredBatch("image", "deferred");
+  }
+
+  public async regenerateStoryDanbot(): Promise<void> {
+    await this.runDeferredBatch("danbot", "all");
+  }
+
+  public async regenerateStoryImages(): Promise<void> {
+    await this.runDeferredBatch("image", "all");
   }
 
   private shouldDeferStep(stepId: StoryWorkflowStepId): boolean {
@@ -450,7 +458,10 @@ export class SceneWorkflowCoordinator {
     }
   }
 
-  private async runDeferredBatch(kind: "danbot" | "image"): Promise<void> {
+  private async runDeferredBatch(
+    kind: "danbot" | "image",
+    scope: "deferred" | "all"
+  ): Promise<void> {
     const state = this.host.getState();
 
     if (!state.tree || !state.backendConfig) {
@@ -467,14 +478,19 @@ export class SceneWorkflowCoordinator {
       return;
     }
 
-    const nodeIds = deferredNodeIds(state, kind);
+    const nodeIds =
+      scope === "deferred"
+        ? deferredNodeIds(state, kind)
+        : getStoryNodeIds(state.tree);
 
     if (nodeIds.length === 0) {
       this.host.setState({
         message:
-          kind === "danbot"
-            ? "No deferred DanBot steps found."
-            : "No deferred image steps found."
+          scope === "deferred"
+            ? kind === "danbot"
+              ? "No deferred DanBot steps found."
+              : "No deferred image steps found."
+            : "No story scenes found."
       });
       return;
     }
@@ -497,13 +513,19 @@ export class SceneWorkflowCoordinator {
         total: nodeIds.length,
         completed: 0,
         startedAt: run.startedAt,
-        message: kind === "danbot"
-          ? "Loading DanBot model..."
-          : "Loading image model..."
+        message:
+          kind === "danbot"
+            ? "Loading DanBot model..."
+            : "Loading image model..."
       },
-      message: kind === "danbot"
-        ? "Generating deferred DanBot steps..."
-        : "Generating deferred image steps..."
+      message:
+        scope === "deferred"
+          ? kind === "danbot"
+            ? "Generating deferred DanBot steps..."
+            : "Generating deferred image steps..."
+          : kind === "danbot"
+            ? "Regenerating story DanBot steps..."
+            : "Regenerating story images..."
     });
 
     try {
@@ -518,7 +540,10 @@ export class SceneWorkflowCoordinator {
 
         const currentState = this.host.getState();
 
-        if (!isNodeStepDeferred(currentState, nodeId, kind)) {
+        if (
+          scope === "deferred" &&
+          !isNodeStepDeferred(currentState, nodeId, kind)
+        ) {
           completed += 1;
           this.updateDeferredBatchJob(run, {
             currentNodeId: nodeId,
@@ -540,8 +565,12 @@ export class SceneWorkflowCoordinator {
         });
 
         const applied = kind === "danbot"
-          ? await this.generateDeferredDanbotForNode(run, nodeId)
-          : await this.generateDeferredImageForNode(run, nodeId);
+          ? await this.generateDeferredDanbotForNode(run, nodeId, {
+              requireDeferred: scope === "deferred"
+            })
+          : await this.generateDeferredImageForNode(run, nodeId, {
+              requireDeferred: scope === "deferred"
+            });
 
         if (!this.isCurrentDeferredRun(run)) {
           return;
@@ -573,11 +602,17 @@ export class SceneWorkflowCoordinator {
               currentNodeId: null,
               currentIndex: nodeIds.length,
               completed,
-              message: "Deferred generation complete."
+              message:
+                scope === "deferred"
+                  ? "Deferred generation complete."
+                  : "Story regeneration complete."
             }
           : null,
         dirty: true,
-        message: "Deferred generation complete."
+        message:
+          scope === "deferred"
+            ? "Deferred generation complete."
+            : "Story regeneration complete."
       }));
       await this.host.saveStory();
     } catch (error) {
@@ -641,7 +676,8 @@ export class SceneWorkflowCoordinator {
 
   private async generateDeferredDanbotForNode(
     run: DeferredGenerationRun,
-    nodeId: string
+    nodeId: string,
+    options: { requireDeferred: boolean }
   ): Promise<boolean> {
     const state = this.host.getState();
 
@@ -667,7 +703,12 @@ export class SceneWorkflowCoordinator {
       positivePrompt: ""
     };
     const promptResult = generatePromptStep({
-      document: fieldsWithDanbot
+      document: fieldsWithDanbot,
+      context: this.createWorkflowContext(
+        nodeId,
+        "prompt",
+        run.abortController.signal
+      )
     });
     const promptPayload = normalizeStepPayload("prompt", promptResult.value);
 
@@ -679,7 +720,8 @@ export class SceneWorkflowCoordinator {
     const latestFields = resolveStoryNodeFields(latestState.tree, nodeId);
 
     if (
-      !isNodeStepDeferred(latestState, nodeId, "danbot") ||
+      (options.requireDeferred &&
+        !isNodeStepDeferred(latestState, nodeId, "danbot")) ||
       fingerprint !== deferredInputFingerprint("danbot", latestFields, latestState.backendConfig)
     ) {
       return false;
@@ -744,7 +786,8 @@ export class SceneWorkflowCoordinator {
 
   private async generateDeferredImageForNode(
     run: DeferredGenerationRun,
-    nodeId: string
+    nodeId: string,
+    options: { requireDeferred: boolean }
   ): Promise<boolean> {
     const state = this.host.getState();
 
@@ -772,7 +815,8 @@ export class SceneWorkflowCoordinator {
     const latestFields = resolveStoryNodeFields(latestState.tree, nodeId);
 
     if (
-      !isNodeStepDeferred(latestState, nodeId, "image") ||
+      (options.requireDeferred &&
+        !isNodeStepDeferred(latestState, nodeId, "image")) ||
       fingerprint !== deferredInputFingerprint("image", latestFields, latestState.backendConfig)
     ) {
       return false;

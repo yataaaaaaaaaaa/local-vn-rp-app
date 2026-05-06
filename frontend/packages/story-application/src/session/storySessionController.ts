@@ -340,6 +340,14 @@ export class StorySessionController {
     await this.workflowCoordinator.generateDeferredImages();
   }
 
+  public async regenerateStoryDanbot(): Promise<void> {
+    await this.workflowCoordinator.regenerateStoryDanbot();
+  }
+
+  public async regenerateStoryImages(): Promise<void> {
+    await this.workflowCoordinator.regenerateStoryImages();
+  }
+
   public async cancelDeferredGeneration(): Promise<void> {
     await this.workflowCoordinator.cancelDeferredGeneration();
   }

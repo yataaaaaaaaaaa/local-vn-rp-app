@@ -3,6 +3,7 @@ import {
   useRuntimeEventsStore,
   useStorySessionStore
 } from "@local-vn/stores";
+import { getStoryNodeIds } from "@local-vn/story-domain";
 import type { StorySessionRunningJob } from "@local-vn/story-application";
 
 import { KSamplerProgress } from "./KSamplerProgress";
@@ -22,6 +23,7 @@ export function DeferredGenerationPanel() {
   );
 
   const workflowByNodeId = useStorySessionStore((state) => state.workflowByNodeId);
+  const tree = useStorySessionStore((state) => state.tree);
   const storyBusy = useStorySessionStore((state) => state.busy);
   const backendConfig = useStorySessionStore((state) => state.backendConfig);
   const deferredBatchJob = useStorySessionStore((state) => state.deferredBatchJob);
@@ -30,6 +32,12 @@ export function DeferredGenerationPanel() {
   );
   const generateDeferredImages = useStorySessionStore(
     (state) => state.generateDeferredImages
+  );
+  const regenerateStoryDanbot = useStorySessionStore(
+    (state) => state.regenerateStoryDanbot
+  );
+  const regenerateStoryImages = useStorySessionStore(
+    (state) => state.regenerateStoryImages
   );
   const cancelDeferredGeneration = useStorySessionStore(
     (state) => state.cancelDeferredGeneration
@@ -47,6 +55,7 @@ export function DeferredGenerationPanel() {
 
   const deferredDanbotCount = countDeferredSteps(workflowByNodeId, "danbot");
   const deferredImageCount = countDeferredSteps(workflowByNodeId, "image");
+  const storySceneCount = tree ? getStoryNodeIds(tree).length : 0;
   const batchRunning = deferredBatchJob?.status === "running";
   const sceneProgress =
     deferredBatchJob && deferredBatchJob.total > 0
@@ -141,6 +150,32 @@ export function DeferredGenerationPanel() {
           onClick={() => void generateDeferredImages()}
         >
           Generate Images
+        </button>
+
+        <button
+          type="button"
+          disabled={
+            storyBusy ||
+            batchRunning ||
+            !backendConfig ||
+            storySceneCount === 0
+          }
+          onClick={() => void regenerateStoryDanbot()}
+        >
+          Regenerate DanBot
+        </button>
+
+        <button
+          type="button"
+          disabled={
+            storyBusy ||
+            batchRunning ||
+            !backendConfig ||
+            storySceneCount === 0
+          }
+          onClick={() => void regenerateStoryImages()}
+        >
+          Regenerate Images
         </button>
       </div>
 

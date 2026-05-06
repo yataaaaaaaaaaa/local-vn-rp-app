@@ -3,7 +3,9 @@ import type { StoryNodeFields } from "@local-vn/story-domain";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  generateDanbotStep,
   generateDialogueStep,
+  generatePromptStep,
   generateUserTextStep,
   generateVisualDescriptionStep,
   type StoryStepGenerationContext
@@ -37,6 +39,49 @@ describe("story step generators", () => {
     ]);
     expect(trace.mock.calls[0][0][0].answer).toBe("Generated answer.");
     expect(resolverTrace).not.toHaveBeenCalled();
+  });
+
+  it("builds the prompt from resolver tags, selected tags, DanBot tags, and global defaults", () => {
+    const context = createContext(vi.fn(), vi.fn());
+    context.config.prompts.default_positive_prompt = "global default";
+
+    const result = generatePromptStep({
+      document: {
+        ...baseNode(),
+        resolverText:
+          "The tags that describe the image are: moonlight, blue dress\n======================\nA girl stands in moonlight.",
+        selectedTags: "1girl, solo",
+        danbotTags: "long hair, blue eyes"
+      },
+      context
+    });
+
+    expect(result.value.positivePrompt).toBe(
+      "moonlight, blue dress\n\n1girl, solo\n\nlong hair, blue eyes\n\nglobal default"
+    );
+  });
+
+  it("keeps DanBot generation scoped to DanBot tags so prompt generation owns prompt composition", async () => {
+    const context = createContext(vi.fn(), vi.fn());
+    vi.mocked(context.backend.generateDanbotTags).mockResolvedValue({
+      prompt: "A girl stands in moonlight.",
+      tags: ["long hair", "blue eyes"],
+      warnings: [],
+      model_path: "danbot-model"
+    });
+
+    const result = await generateDanbotStep({
+      document: {
+        ...baseNode(),
+        resolverText:
+          "The tags that describe the image are: moonlight\n======================\nA girl stands in moonlight."
+      },
+      context
+    });
+
+    expect(result.value).toEqual({
+      danbotTags: "long hair, blue eyes"
+    });
   });
 });
 

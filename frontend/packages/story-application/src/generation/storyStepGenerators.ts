@@ -3,7 +3,6 @@ import type { BackendRuntimeConfig } from "@local-vn/shared-types";
 import {
   createStoryWorkflowStepDescriptors,
   defaultStoryWorkflowModes,
-  joinPromptParts,
   storyWorkflowStepIds,
   type StoryNodeFields,
   type StoryWorkflowModes,
@@ -39,6 +38,7 @@ import {
   dedupeTags,
   parseVisualPromptPlan
 } from "./visualPromptProtocol";
+import { buildStoryPositivePrompt } from "./promptComposition";
 
 export interface StoryStepGenerationContext {
   backend: StoryGenerationBackend;
@@ -308,8 +308,7 @@ export async function generateDanbotStep(input: {
   if (!resolverText && !fallbackText) {
     return {
       value: {
-        danbotTags: "",
-        positivePrompt: input.document.selectedTags.trim()
+        danbotTags: ""
       },
       warnings: ["No tagger-safe visual cue available for DanBot."]
     };
@@ -351,18 +350,9 @@ export async function generateDanbotStep(input: {
     warnings.push(...result.warnings);
   }
 
-  const manuallySelectedTags = splitPromptTags(input.document.selectedTags);
-
-  const positiveTags = dedupeTags([
-    ...manuallySelectedTags,
-    ...plan.fixedTags,
-    ...allDanbotTags
-  ]);
-
   return {
     value: {
-      danbotTags: dedupeTags(allDanbotTags).join(", "),
-      positivePrompt: positiveTags.join(", ")
+      danbotTags: dedupeTags(allDanbotTags).join(", ")
     },
     warnings
   };
@@ -370,16 +360,19 @@ export async function generateDanbotStep(input: {
 
 export function generatePromptStep(input: {
   document: StoryNodeFields;
+  context?: StoryStepGenerationContext;
 }): WorkflowGenerationResult<StoryWorkflowPayload> {
   return {
     value: {
-      positivePrompt:
-        input.document.positivePrompt ||
-        joinPromptParts([
-          input.document.selectedTags,
-          input.document.danbotTags
-        ]),
-      negativePrompt: input.document.negativePrompt || "lowres, bad anatomy"
+      positivePrompt: buildStoryPositivePrompt({
+        fields: input.document,
+        defaultPositivePrompt:
+          input.context?.config.prompts.default_positive_prompt
+      }),
+      negativePrompt:
+        input.document.negativePrompt ||
+        input.context?.config.prompts.default_negative_prompt ||
+        "lowres, bad anatomy"
     }
   };
 }
@@ -433,11 +426,4 @@ export function generateNextSceneStep(): WorkflowGenerationResult<StoryWorkflowP
 
 export function isStoryWorkflowStepId(value: string): value is StoryWorkflowStepId {
   return (storyWorkflowStepIds as readonly string[]).includes(value);
-}
-
-function splitPromptTags(text: string): string[] {
-  return text
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter(Boolean);
 }

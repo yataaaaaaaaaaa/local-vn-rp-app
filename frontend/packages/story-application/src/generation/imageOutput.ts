@@ -8,6 +8,7 @@ import type {
   StoryNodeFields
 } from "@local-vn/story-domain";
 import { joinPromptParts, stringifyImageRef } from "@local-vn/story-domain";
+import { buildStoryPositivePrompt } from "./promptComposition";
 
 export function createImageId(input: {
   nodeId: string;
@@ -32,13 +33,14 @@ export function buildImageGenerateRequest(input: {
 }): ImageGenerateRequest {
   const scenePositivePrompt =
     input.fields.positivePrompt ||
-    input.fields.selectedTags ||
-    input.fields.danbotTags;
+    buildStoryPositivePrompt({
+      fields: input.fields
+    });
 
   return {
     positive_prompt: mergePromptTexts([
-      input.config.prompts.default_positive_prompt,
-      scenePositivePrompt
+      scenePositivePrompt,
+      input.config.prompts.default_positive_prompt
     ]),
     negative_prompt: mergePromptTexts([
       input.config.prompts.default_negative_prompt,

@@ -96,6 +96,8 @@ export interface StorySessionActions {
   setStepAutoValidate(stepId: StoryWorkflowStepId, enabled: boolean): void;
   generateDeferredDanbot(): Promise<void>;
   generateDeferredImages(): Promise<void>;
+  regenerateStoryDanbot(): Promise<void>;
+  regenerateStoryImages(): Promise<void>;
   cancelDeferredGeneration(): Promise<void>;
   applyPresetContext(context: string): Promise<void>;
   applyResolverResult(input: {
