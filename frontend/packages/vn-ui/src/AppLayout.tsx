@@ -3,6 +3,7 @@ import { BackendConfigPanel } from "./backend-config/BackendConfigPanel";
 import { DanbooruResolverPanel } from "./danbooru-resolver/DanbooruResolverPanel";
 import { DeferredGenerationPanel } from "./workflow-tabs/DeferredGenerationPanel";
 import { LeafStepTabs } from "./workflow-tabs/LeafStepTabs";
+import { PromptDebugPanel } from "./prompt-debug/PromptDebugPanel";
 import { StoryTreeSceneNavigator } from "./scene-tree-navigator";
 import { TreeCommandPalette } from "./TreeCommandPalette";
 import { useSceneArrowShortcuts } from "./useSceneArrowShortcuts";
@@ -20,6 +21,7 @@ export function AppLayout() {
       <DeferredGenerationPanel />
       <DanbooruResolverPanel />
       <BackendConfigPanel />
+      <PromptDebugPanel />
       <ActionCompositionCorrectionDialog />
     </main>
   );

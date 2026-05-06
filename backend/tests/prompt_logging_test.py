@@ -74,6 +74,25 @@ class PromptLoggingTest(unittest.TestCase):
             self.assertEqual(record["output"]["finish_reason"], "stop")
             self.assertIsNone(record["error"])
 
+    def test_debug_llm_generation_can_skip_prompt_log(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            log_path = Path(tmp) / "generation.log.jsonl"
+            wrapper = BackendRuntimeWrapper(
+                api_loader=quoted_output_api_loader,
+                prompt_log_path=log_path,
+            )
+            wrapper.load_llm({"model_path": "D:/models/test.gguf"})
+            result = wrapper.generate_llm(
+                {
+                    "prompt": "scratch debug prompt",
+                    "max_tokens": 8,
+                    "debug_no_log": True,
+                }
+            )
+
+            self.assertEqual(result["text"], 'hello "quoted" output\nnext line')
+            self.assertEqual(log_path.read_text(encoding="utf-8"), "")
+
     def test_diffusion_generation_is_appended_as_jsonl(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             log_path = Path(tmp) / "generation.log.jsonl"

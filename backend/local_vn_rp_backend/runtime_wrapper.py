@@ -183,6 +183,7 @@ class BackendRuntimeWrapper:
         api = self._get_api()
         backend = self._ensure_backend()
         raw_prompt = str(request.get("prompt", ""))
+        skip_log = bool(request.get("debug_no_log") or request.get("debug_no_persist"))
         prompt_format = _optional_str(
             request.get("prompt_format") or settings.get("prompt_format")
         )
@@ -222,9 +223,10 @@ class BackendRuntimeWrapper:
                     "seed": seed,
                     "timing": {"prompt_ms": 0, "generation_ms": generation_ms},
                 }
-                self._log_generation(
-                    GenerationLogEntry(
-                        event="generation.cancelled",
+                if not skip_log:
+                    self._log_generation(
+                        GenerationLogEntry(
+                            event="generation.cancelled",
                         kind="llm",
                         job_id=job_id,
                         model_path=model_path,
@@ -239,8 +241,8 @@ class BackendRuntimeWrapper:
                             "generation_ms": generation_ms,
                             "total_ms": generation_ms,
                         },
+                        )
                     )
-                )
                 return result
             result = {
                 "text": "".join(text_parts),
@@ -248,9 +250,10 @@ class BackendRuntimeWrapper:
                 "seed": seed,
                 "timing": {"prompt_ms": 0, "generation_ms": generation_ms},
             }
-            self._log_generation(
-                GenerationLogEntry(
-                    event="generation.completed",
+            if not skip_log:
+                self._log_generation(
+                    GenerationLogEntry(
+                        event="generation.completed",
                     kind="llm",
                     job_id=job_id,
                     model_path=model_path,
@@ -265,8 +268,8 @@ class BackendRuntimeWrapper:
                         "generation_ms": generation_ms,
                         "total_ms": generation_ms,
                     },
+                    )
                 )
-            )
             self.event_bus.publish(
                 {
                     "type": "generation_completed",
@@ -278,9 +281,10 @@ class BackendRuntimeWrapper:
             return result
         except Exception as exc:
             generation_ms = int((time.monotonic() - started) * 1000)
-            self._log_generation(
-                GenerationLogEntry(
-                    event="generation.failed",
+            if not skip_log:
+                self._log_generation(
+                    GenerationLogEntry(
+                        event="generation.failed",
                     kind="llm",
                     job_id=job_id,
                     model_path=model_path,
@@ -294,8 +298,8 @@ class BackendRuntimeWrapper:
                     },
                     error=error_record(exc),
                     level="error",
+                    )
                 )
-            )
             self._mark_failed(job_id, "llm", exc)
             raise
         finally:
@@ -379,8 +383,8 @@ class BackendRuntimeWrapper:
                         "warnings": result["warnings"],
                     },
                     timing={"total_ms": total_ms},
+                    )
                 )
-            )
             self.event_bus.publish(
                 {
                     "type": "generation_completed",
@@ -392,9 +396,10 @@ class BackendRuntimeWrapper:
             return result
         except Exception as exc:
             total_ms = int((time.monotonic() - started) * 1000)
-            self._log_generation(
-                GenerationLogEntry(
-                    event="generation.failed",
+            if not skip_log:
+                self._log_generation(
+                    GenerationLogEntry(
+                        event="generation.failed",
                     kind="danbot",
                     job_id=job_id,
                     model_path=path,
@@ -529,8 +534,8 @@ class BackendRuntimeWrapper:
                         "warnings": result["warnings"],
                     },
                     timing={"total_ms": total_ms},
+                    )
                 )
-            )
             self.event_bus.publish(
                 {
                     "type": "generation_completed",
@@ -542,9 +547,10 @@ class BackendRuntimeWrapper:
             return result
         except Exception as exc:
             total_ms = int((time.monotonic() - started) * 1000)
-            self._log_generation(
-                GenerationLogEntry(
-                    event="generation.failed",
+            if not skip_log:
+                self._log_generation(
+                    GenerationLogEntry(
+                        event="generation.failed",
                     kind="diffusion",
                     job_id=job_id,
                     model_path=model_path,

@@ -43,6 +43,7 @@ export interface LlmGenerateRequest {
   seed?: number;
   stop?: string[];
   timeout_seconds?: number;
+  debug_no_log?: boolean;
 }
 
 export interface LlmGenerateResponse {

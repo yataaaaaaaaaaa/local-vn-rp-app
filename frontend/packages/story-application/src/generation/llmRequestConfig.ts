@@ -13,7 +13,7 @@ export function rpNovelLlmRequestConfig(
   prompt: string,
   overrides: Partial<LlmGenerateRequest> = {}
 ): LlmGenerateRequest {
-  return {
+  const request: LlmGenerateRequest = {
     prompt,
     model_path: runtimeConfig.llm.model_path,
     prompt_format:
@@ -50,4 +50,18 @@ export function rpNovelLlmRequestConfig(
       RP_NOVEL_PRESET.repeat_penalty,
     stop: overrides.stop ?? RP_NOVEL_STOP
   };
+
+  if (overrides.seed !== undefined) {
+    request.seed = overrides.seed;
+  }
+
+  if (overrides.timeout_seconds !== undefined) {
+    request.timeout_seconds = overrides.timeout_seconds;
+  }
+
+  if (overrides.debug_no_log !== undefined) {
+    request.debug_no_log = overrides.debug_no_log;
+  }
+
+  return request;
 }
