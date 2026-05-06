@@ -3,13 +3,45 @@ import { describe, expect, it } from "vitest";
 import {
   RP_DIALOGUE_STOP,
   RP_NOVEL_PRESET,
-  buildAutomaticUserAnswerPrompt,
-  buildRpAnswerPrompt,
-  buildVisualRepresentationPrompt,
+  buildAutomaticUserAnswerPromptWithActorNameCache,
+  buildRpAnswerPromptWithActorNameCache,
+  buildVisualRepresentationPromptWithActorNameCache,
   cleanDialogueOutput,
   cleanUserTextOutput,
   cleanVisualDescriptionOutput
 } from "../src/generation/rpNovelPrompts";
+
+async function runHiddenActorNameExtraction(): Promise<string> {
+  return JSON.stringify({ playerName: null, npcName: null });
+}
+
+async function buildNpcPrompt(
+  input: Parameters<typeof buildRpAnswerPromptWithActorNameCache>[0]
+): Promise<string> {
+  return (
+    await buildRpAnswerPromptWithActorNameCache(input, runHiddenActorNameExtraction)
+  ).prompt;
+}
+
+async function buildUserPrompt(
+  input: Parameters<typeof buildAutomaticUserAnswerPromptWithActorNameCache>[0]
+): Promise<string> {
+  return (
+    await buildAutomaticUserAnswerPromptWithActorNameCache(
+      input,
+      runHiddenActorNameExtraction
+    )
+  ).prompt;
+}
+
+function buildVisualPrompt(
+  input: Parameters<typeof buildVisualRepresentationPromptWithActorNameCache>[0]
+): Promise<string> {
+  return buildVisualRepresentationPromptWithActorNameCache(
+    input,
+    runHiddenActorNameExtraction
+  );
+}
 
 describe("RP novel prompts", () => {
   it("uses the Mistral RP sampler baseline without assistant-label hard stops", () => {
@@ -26,8 +58,8 @@ describe("RP novel prompts", () => {
     expect(RP_DIALOGUE_STOP).not.toContain("\nPrompt:");
   });
 
-  it("keeps character appearance anchors in the visual cue prompt", () => {
-    const prompt = buildVisualRepresentationPrompt({
+  it("keeps character appearance anchors in the visual cue prompt", async () => {
+    const prompt = await buildVisualPrompt({
       node: {
         context: [
           "The archive smells of old parchment.",
@@ -53,8 +85,8 @@ describe("RP novel prompts", () => {
     expect(prompt).toContain("infer known visible traits");
   });
 
-  it("tells dialogue generations to keep narration third person and complete", () => {
-    const prompt = buildRpAnswerPrompt({
+  it("tells dialogue generations to keep narration third person and complete", async () => {
+    const prompt = await buildNpcPrompt({
       node: {
         context: "Darkness is the main NPC. Kazuma is the user/player character.",
         userText: "What are you waiting for?",
@@ -76,8 +108,8 @@ describe("RP novel prompts", () => {
     expect(prompt).toContain("Do not use asterisks");
   });
 
-  it("anchors automatic user text to the latest previous turn", () => {
-    const prompt = buildAutomaticUserAnswerPrompt({
+  it("anchors automatic user text to the latest previous turn", async () => {
+    const prompt = await buildUserPrompt({
       node: {
         context: [
           "INITIAL SETUP: The archive smells of old parchment.",
@@ -119,7 +151,7 @@ describe("RP novel prompts", () => {
     expect(prompt).not.toContain("NPC: I am.\n\nCURRENT_TURN");
   });
 
-  it("stages current-turn context per generation step", () => {
+  it("stages current-turn context per generation step", async () => {
     const node = {
       context: "PREVIOUS_TURN:\nUSER: Are you ready?\nNPC: I am.",
       userText: "Take my hand.",
@@ -133,8 +165,8 @@ describe("RP novel prompts", () => {
       imageRef: ""
     };
 
-    const npcPrompt = buildRpAnswerPrompt({ node: { ...node, dialogue: "" } });
-    const visualPrompt = buildVisualRepresentationPrompt({ node });
+    const npcPrompt = await buildNpcPrompt({ node: { ...node, dialogue: "" } });
+    const visualPrompt = await buildVisualPrompt({ node });
 
     expect(npcPrompt).toContain("CURRENT_TURN:\nUSER: Take my hand.");
     expect(npcPrompt).not.toContain("NPC_REPLY: Only if you keep up.");

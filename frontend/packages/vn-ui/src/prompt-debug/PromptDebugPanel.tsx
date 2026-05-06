@@ -3,12 +3,13 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   RP_DIALOGUE_STOP,
   RP_NOVEL_STOP,
-  buildAutomaticUserAnswerPromptWithMetadata,
-  buildRpAnswerPromptWithMetadata,
-  buildVisualRepresentationPrompt,
+  buildAutomaticUserAnswerPromptWithActorNameCache,
+  buildRpAnswerPromptWithActorNameCache,
+  buildVisualRepresentationPromptWithActorNameCache,
   rpNovelLlmRequestConfig,
   type AdvancementCard,
-  type NoveltyPlan
+  type NoveltyPlan,
+  type RpActorNames
 } from "@local-vn/story-application";
 import type { LlmGenerateRequest } from "@local-vn/shared-types";
 import {
@@ -22,11 +23,19 @@ import {
 import { useResolvedCurrentNode } from "../useResolvedCurrentNode";
 
 type DebugPromptKind = "dialogue" | "visualDescription" | "userText";
-type DebugStatus = "idle" | "prompt-ready" | "streaming" | "done" | "error" | "cancelled";
+type DebugStatus =
+  | "idle"
+  | "building-prompt"
+  | "prompt-ready"
+  | "streaming"
+  | "done"
+  | "error"
+  | "cancelled";
 
 type PromptDebugMetadata = {
   advancementCard?: AdvancementCard;
   noveltyPlan?: NoveltyPlan;
+  actorNames?: RpActorNames | null;
 };
 
 const promptOptions: Array<{
@@ -84,7 +93,8 @@ export function PromptDebugPanel() {
   const debugEvent = debugJobId ? latestByJobId[debugJobId] : null;
   const streamedAnswer = debugJobId ? textByJobId[debugJobId] ?? "" : "";
   const displayedAnswer = streamedAnswer || answerText;
-  const canSend = Boolean(promptText.trim()) && status !== "streaming";
+  const canSend =
+    Boolean(promptText.trim()) && status !== "streaming" && status !== "building-prompt";
   const busyElsewhere = Boolean(storyBusy);
   const runtimeBusyHint = Boolean(runtimeStatus?.busy);
 
@@ -136,16 +146,23 @@ export function PromptDebugPanel() {
     }
   }, [debugEvent]);
 
-  function generatePrompt(): void {
-    const result = buildPromptForCurrentScene(promptKind);
-    setPromptText(result.prompt);
-    setMetadata(result.metadata);
+  async function generatePrompt(): Promise<void> {
     setAnswerText("");
     setDebugJobId(null);
     setBaselineLlmJobId(undefined);
     setWaitingForJob(false);
     setError(null);
-    setStatus("prompt-ready");
+    setStatus("building-prompt");
+
+    try {
+      const result = await buildPromptForCurrentScene(promptKind);
+      setPromptText(result.prompt);
+      setMetadata(result.metadata);
+      setStatus("prompt-ready");
+    } catch (reason) {
+      setStatus("error");
+      setError(reason instanceof Error ? reason.message : String(reason));
+    }
   }
 
   async function sendPromptToLlm(): Promise<void> {
@@ -206,18 +223,22 @@ export function PromptDebugPanel() {
     setWaitingForJob(false);
   }
 
-  function buildPromptForCurrentScene(kind: DebugPromptKind): {
+  async function buildPromptForCurrentScene(kind: DebugPromptKind): Promise<{
     prompt: string;
     metadata: PromptDebugMetadata | null;
-  } {
+  }> {
     const input = {
       node,
       storyId,
       selectedNodeId
     };
+    const runHiddenActorNameExtraction = createHiddenActorNameExtractionRunner();
 
     if (kind === "dialogue") {
-      const result = buildRpAnswerPromptWithMetadata(input);
+      const result = await buildRpAnswerPromptWithActorNameCache(
+        input,
+        runHiddenActorNameExtraction
+      );
       return {
         prompt: result.prompt,
         metadata: metadataFromPromptBuildResult(result)
@@ -225,7 +246,10 @@ export function PromptDebugPanel() {
     }
 
     if (kind === "userText") {
-      const result = buildAutomaticUserAnswerPromptWithMetadata(input);
+      const result = await buildAutomaticUserAnswerPromptWithActorNameCache(
+        input,
+        runHiddenActorNameExtraction
+      );
       return {
         prompt: result.prompt,
         metadata: metadataFromPromptBuildResult(result)
@@ -233,8 +257,26 @@ export function PromptDebugPanel() {
     }
 
     return {
-      prompt: buildVisualRepresentationPrompt(input),
+      prompt: await buildVisualRepresentationPromptWithActorNameCache(
+        input,
+        runHiddenActorNameExtraction
+      ),
       metadata: null
+    };
+  }
+
+  function createHiddenActorNameExtractionRunner(): (prompt: string) => Promise<string> {
+    return async (prompt: string): Promise<string> => {
+      const result = await backendClientOrThrow().generateLlm(
+        rpNovelLlmRequestConfig(config, prompt, {
+          max_tokens: Math.min(config.llm.max_tokens, 80),
+          temperature: 0,
+          stop: RP_NOVEL_STOP,
+          debug_no_log: true
+        })
+      );
+
+      return result.text;
     };
   }
 
@@ -258,7 +300,7 @@ export function PromptDebugPanel() {
                 onChange={(event) =>
                   setPromptKind(event.currentTarget.value as DebugPromptKind)
                 }
-                disabled={status === "streaming"}
+                disabled={status === "streaming" || status === "building-prompt"}
               >
                 {promptOptions.map((option) => (
                   <option key={option.id} value={option.id}>
@@ -271,8 +313,8 @@ export function PromptDebugPanel() {
             <div className="prompt-debug-actions">
               <button
                 type="button"
-                onClick={generatePrompt}
-                disabled={status === "streaming"}
+                onClick={() => void generatePrompt()}
+                disabled={status === "streaming" || status === "building-prompt"}
               >
                 Generate prompt
               </button>
@@ -318,6 +360,16 @@ export function PromptDebugPanel() {
                   Novelty: <code>{metadata.noveltyPlan.axis}</code>
                 </span>
               ) : null}
+              {metadata.actorNames?.playerName || metadata.actorNames?.npcName ? (
+                <span>
+                  Actors:{" "}
+                  <code>
+                    {[metadata.actorNames.playerName, metadata.actorNames.npcName]
+                      .filter(Boolean)
+                      .join(" / ")}
+                  </code>
+                </span>
+              ) : null}
             </div>
           ) : null}
 
@@ -331,7 +383,7 @@ export function PromptDebugPanel() {
                 onChange={(event) => setPromptText(event.currentTarget.value)}
                 placeholder="Generate one of the current-scene prompts here, edit it, then send it to the LLM."
                 spellCheck={false}
-                disabled={status === "streaming"}
+                disabled={status === "streaming" || status === "building-prompt"}
               />
             </label>
 
@@ -356,10 +408,12 @@ export function PromptDebugPanel() {
 function metadataFromPromptBuildResult(result: {
   advancementCard?: AdvancementCard;
   noveltyPlan?: NoveltyPlan;
+  actorNames?: RpActorNames | null;
 }): PromptDebugMetadata {
   return {
     ...(result.advancementCard ? { advancementCard: result.advancementCard } : {}),
-    ...(result.noveltyPlan ? { noveltyPlan: result.noveltyPlan } : {})
+    ...(result.noveltyPlan ? { noveltyPlan: result.noveltyPlan } : {}),
+    ...(result.actorNames ? { actorNames: result.actorNames } : {})
   };
 }
 
@@ -396,6 +450,8 @@ function statusLabel(status: DebugStatus, waitingForJob: boolean): string {
   if (waitingForJob) return "waiting for stream";
 
   switch (status) {
+    case "building-prompt":
+      return "building prompt";
     case "prompt-ready":
       return "prompt ready";
     case "streaming":

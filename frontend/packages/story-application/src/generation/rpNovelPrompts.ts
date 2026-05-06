@@ -52,7 +52,7 @@ export type RpActorNames = {
   npcName?: string | null;
 };
 
-export type RpActorLabels = {
+type RpActorLabels = {
   player: string;
   npc: string;
   Player: string;
@@ -86,14 +86,14 @@ export type RpPromptBuildResult = {
   actorNames?: RpActorNames | null;
 };
 
-export type ActorMetadataCacheResult = {
+type ActorMetadataCacheResult = {
   cacheKey: string;
   contextHash: string;
   actorNames: RpActorNames | null;
   cacheHit: boolean;
 };
 
-export type ActorNameExtractionPromptResult = {
+type ActorNameExtractionPromptResult = {
   cacheKey: string;
   contextHash: string;
   cacheHit: boolean;
@@ -117,11 +117,9 @@ export type RpPromptInput = {
   boundaryDetected?: boolean;
   rng?: () => number;
 
-  /**
-   * Optional metadata.
-   * Can be supplied directly, loaded from actor metadata cache,
-   * or extracted by a separate hidden LLM prestep.
-   */
+};
+
+type RpPromptRenderInput = RpPromptInput & {
   actorNames?: RpActorNames | null;
 };
 
@@ -172,7 +170,7 @@ type AdvancementTemplateData = {
   isBoundaryPause: boolean;
 };
 
-export const ADVANCEMENT_DECK: AdvancementCard[] = [
+const ADVANCEMENT_DECK: AdvancementCard[] = [
   {
     id: "commit",
     weight: 14,
@@ -316,7 +314,7 @@ function renderPromptTemplate(template: string, data: PromptTemplateData): strin
 }
 
 function buildPromptTemplateData(
-  input: RpPromptInput,
+  input: RpPromptRenderInput,
   advancementCard?: AdvancementCard,
   noveltyPlan?: NoveltyPlan
 ): PromptTemplateData {
@@ -656,7 +654,7 @@ function normalizeContextSnippet(text: string): string {
     .trim();
 }
 
-export function selectAdvancementCard(input: RpPromptInput): AdvancementCard {
+function selectAdvancementCard(input: RpPromptInput): AdvancementCard {
   if (input.boundaryDetected || detectBoundary(input.node.userText || "")) {
     return getAdvancementCard("boundary_pause");
   }
@@ -787,7 +785,7 @@ function layoutCounterpartAnswerPromptTemplate(): string {
   ].join("\n");
 }
 
-export function buildRpAnswerPromptWithMetadata(input: RpPromptInput): RpPromptBuildResult {
+function renderRpAnswerPromptWithResolvedActors(input: RpPromptRenderInput): RpPromptBuildResult {
   const advancementCard = selectAdvancementCard(input);
   const noveltyPlan = selectNoveltyPlan(input);
   const template = layoutCounterpartAnswerPromptTemplate();
@@ -801,17 +799,13 @@ export function buildRpAnswerPromptWithMetadata(input: RpPromptInput): RpPromptB
   };
 }
 
-export function buildRpAnswerPrompt(input: RpPromptInput): string {
-  return buildRpAnswerPromptWithMetadata(input).prompt;
-}
-
 export async function buildRpAnswerPromptWithActorNameCache(
   input: RpPromptInput,
   runHiddenActorNameExtraction: ActorNameExtractionRunner
 ): Promise<RpPromptBuildResult> {
   const actorNames = await resolveActorNamesForPrompt(input, runHiddenActorNameExtraction);
 
-  return buildRpAnswerPromptWithMetadata({
+  return renderRpAnswerPromptWithResolvedActors({
     ...input,
     actorNames
   });
@@ -857,7 +851,7 @@ function layoutVisualRepresentationPromptTemplate(): string {
   ].join("\n");
 }
 
-export function buildVisualRepresentationPrompt(input: RpPromptInput): string {
+function renderVisualRepresentationPromptWithResolvedActors(input: RpPromptRenderInput): string {
   const template = layoutVisualRepresentationPromptTemplate();
   const data = buildPromptTemplateData(input);
 
@@ -870,7 +864,7 @@ export async function buildVisualRepresentationPromptWithActorNameCache(
 ): Promise<string> {
   const actorNames = await resolveActorNamesForPrompt(input, runHiddenActorNameExtraction);
 
-  return buildVisualRepresentationPrompt({
+  return renderVisualRepresentationPromptWithResolvedActors({
     ...input,
     actorNames
   });
@@ -911,7 +905,7 @@ function layoutAutomaticPlayerAnswerPromptTemplate(): string {
   ].join("\n");
 }
 
-export function buildAutomaticUserAnswerPromptWithMetadata(input: RpPromptInput): RpPromptBuildResult {
+function renderAutomaticUserAnswerPromptWithResolvedActors(input: RpPromptRenderInput): RpPromptBuildResult {
   const advancementCard = selectAdvancementCard(input);
   const noveltyPlan = selectNoveltyPlan(input);
   const template = layoutAutomaticPlayerAnswerPromptTemplate();
@@ -925,34 +919,23 @@ export function buildAutomaticUserAnswerPromptWithMetadata(input: RpPromptInput)
   };
 }
 
-export function buildAutomaticUserAnswerPrompt(input: RpPromptInput): string {
-  return buildAutomaticUserAnswerPromptWithMetadata(input).prompt;
-}
-
 export async function buildAutomaticUserAnswerPromptWithActorNameCache(
   input: RpPromptInput,
   runHiddenActorNameExtraction: ActorNameExtractionRunner
 ): Promise<RpPromptBuildResult> {
   const actorNames = await resolveActorNamesForPrompt(input, runHiddenActorNameExtraction);
 
-  return buildAutomaticUserAnswerPromptWithMetadata({
+  return renderAutomaticUserAnswerPromptWithResolvedActors({
     ...input,
     actorNames
   });
 }
 
 /**
- * Optional hidden prestep.
- *
- * Usage:
- * 1. Call buildActorNameExtractionPromptWithCache(input).
- * 2. If cacheHit is true, reuse actorNames and skip the LLM call.
- * 3. If prompt is returned, call the LLM with that prompt.
- * 4. Parse with parseActorNameExtractionOutput(raw).
- * 5. Store with rememberActorNamesForPrompt(input, parsed).
- * 6. Pass actorNames into normal prompt builders.
+ * Hidden actor-name prestep used by every RP novel LLM prompt builder.
+ * Cache hits skip the hidden LLM call but still provide the same metadata path.
  */
-export function buildActorNameExtractionPromptWithCache(
+function buildActorNameExtractionPromptWithCache(
   input: RpPromptInput
 ): ActorNameExtractionPromptResult {
   const cached = getCachedActorNamesForPrompt(input);
@@ -974,14 +957,10 @@ export function buildActorNameExtractionPromptWithCache(
   };
 }
 
-export async function resolveActorNamesForPrompt(
+async function resolveActorNamesForPrompt(
   input: RpPromptInput,
   runHiddenActorNameExtraction: ActorNameExtractionRunner
 ): Promise<RpActorNames | null> {
-  if (input.actorNames) {
-    return normalizeActorNames(input.actorNames);
-  }
-
   const extraction = buildActorNameExtractionPromptWithCache(input);
 
   if (extraction.cacheHit) {
@@ -1020,14 +999,14 @@ function layoutActorNameExtractionPromptTemplate(): string {
   ].join("\n");
 }
 
-export function buildActorNameExtractionPrompt(node: StoryNodeFields): string {
+function buildActorNameExtractionPrompt(node: StoryNodeFields): string {
   const template = layoutActorNameExtractionPromptTemplate();
   const data = buildPromptTemplateData({ node, actorNames: null });
 
   return renderPromptTemplate(template, data);
 }
 
-export function parseActorNameExtractionOutput(raw: string): RpActorNames | null {
+function parseActorNameExtractionOutput(raw: string): RpActorNames | null {
   const cleaned = stripProtocolNoise(raw)
     .replace(/^```(?:json)?/i, "")
     .replace(/```$/i, "")
@@ -1045,7 +1024,7 @@ export function parseActorNameExtractionOutput(raw: string): RpActorNames | null
   }
 }
 
-export function getCachedActorNamesForPrompt(input: RpPromptInput): ActorMetadataCacheResult {
+function getCachedActorNamesForPrompt(input: RpPromptInput): ActorMetadataCacheResult {
   const { cacheKey, contextHash } = actorMetadataCacheKey(input);
   const cached = ACTOR_METADATA_CACHE.get(cacheKey);
 
@@ -1066,7 +1045,7 @@ export function getCachedActorNamesForPrompt(input: RpPromptInput): ActorMetadat
   };
 }
 
-export function rememberActorNamesForPrompt(
+function rememberActorNamesForPrompt(
   input: RpPromptInput,
   actorNames: RpActorNames | null
 ): ActorMetadataCacheResult {
@@ -1086,11 +1065,11 @@ export function rememberActorNamesForPrompt(
   return result;
 }
 
-export function clearActorMetadataCache(): void {
+function clearActorMetadataCache(): void {
   ACTOR_METADATA_CACHE.clear();
 }
 
-export function actorMetadataCacheSize(): number {
+function actorMetadataCacheSize(): number {
   return ACTOR_METADATA_CACHE.size;
 }
 
@@ -1152,7 +1131,7 @@ function stableHash(input: string): string {
   return (hash >>> 0).toString(36);
 }
 
-export type AdvancementVerificationResult = {
+type AdvancementVerificationResult = {
   ok: boolean;
   reason?:
   | "empty_output"
@@ -1164,7 +1143,7 @@ export type AdvancementVerificationResult = {
   | "weak_novelty";
 };
 
-export function verifyAdvancementOutput(
+function verifyAdvancementOutput(
   output: string,
   card: AdvancementCard,
   recentOutputs: string[] = []
@@ -1301,7 +1280,7 @@ function isPureEmotion(text: string): boolean {
   return emotionWords.some((word) => lower.includes(word)) && !stateChangeWords.some((word) => lower.includes(word));
 }
 
-export function fallbackAdvancementCard(reason?: AdvancementVerificationResult["reason"]): AdvancementCard {
+function fallbackAdvancementCard(reason?: AdvancementVerificationResult["reason"]): AdvancementCard {
   if (reason === "near_repeat") {
     return getAdvancementCard("phase_exit");
   }
@@ -1361,7 +1340,7 @@ export function cleanVisualDescriptionOutput(text: string): string {
   return cleanGeneratedOutput(text);
 }
 
-export function cleanSingleLineOutput(text: string): string {
+function cleanSingleLineOutput(text: string): string {
   return cleanGeneratedOutput(text).split(/\r?\n/)[0]?.trim() ?? "";
 }
 

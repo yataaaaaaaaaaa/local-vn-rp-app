@@ -14,9 +14,9 @@ import type { StoryGenerationBackend } from "../ports";
 import {
   RP_DIALOGUE_STOP,
   RP_NOVEL_STOP,
-  buildAutomaticUserAnswerPrompt,
-  buildRpAnswerPrompt,
-  buildVisualRepresentationPrompt,
+  buildAutomaticUserAnswerPromptWithActorNameCache,
+  buildRpAnswerPromptWithActorNameCache,
+  buildVisualRepresentationPromptWithActorNameCache,
   cleanDialogueOutput,
   cleanUserTextOutput,
   cleanVisualDescriptionOutput
@@ -126,11 +126,15 @@ export async function generateUserTextStep(input: {
   document: StoryNodeFields;
   context: StoryStepGenerationContext;
 }): Promise<WorkflowGenerationResult<StoryWorkflowPayload>> {
-  const fullPrompt = buildAutomaticUserAnswerPrompt({
-    node: input.document,
-    storyId: input.context.storyId,
-    selectedNodeId: input.context.selectedNodeId
-  });
+  const promptResult = await buildAutomaticUserAnswerPromptWithActorNameCache(
+    {
+      node: input.document,
+      storyId: input.context.storyId,
+      selectedNodeId: input.context.selectedNodeId
+    },
+    createHiddenActorNameExtractionRunner(input.context)
+  );
+  const fullPrompt = promptResult.prompt;
   const result = await input.context.backend.generateLlm(
     rpNovelLlmRequestConfig(
       input.context.config,
@@ -157,11 +161,15 @@ export async function generateDialogueStep(input: {
   document: StoryNodeFields;
   context: StoryStepGenerationContext;
 }): Promise<WorkflowGenerationResult<StoryWorkflowPayload>> {
-  const fullPrompt = buildRpAnswerPrompt({
-    node: input.document,
-    storyId: input.context.storyId,
-    selectedNodeId: input.context.selectedNodeId
-  });
+  const promptResult = await buildRpAnswerPromptWithActorNameCache(
+    {
+      node: input.document,
+      storyId: input.context.storyId,
+      selectedNodeId: input.context.selectedNodeId
+    },
+    createHiddenActorNameExtractionRunner(input.context)
+  );
+  const fullPrompt = promptResult.prompt;
   const result = await input.context.backend.generateLlm(
     rpNovelLlmRequestConfig(
       input.context.config,
@@ -198,11 +206,14 @@ export async function generateVisualDescriptionStep(input: {
     };
   }
 
-  const fullPrompt = buildVisualRepresentationPrompt({
-    node: input.document,
-    storyId: input.context.storyId,
-    selectedNodeId: input.context.selectedNodeId
-  });
+  const fullPrompt = await buildVisualRepresentationPromptWithActorNameCache(
+    {
+      node: input.document,
+      storyId: input.context.storyId,
+      selectedNodeId: input.context.selectedNodeId
+    },
+    createHiddenActorNameExtractionRunner(input.context)
+  );
   const result = await input.context.backend.generateLlm(
     rpNovelLlmRequestConfig(
       input.context.config,
@@ -231,6 +242,24 @@ export async function generateVisualDescriptionStep(input: {
       visualDescription: text,
       resolverText: ""
     }
+  };
+}
+
+function createHiddenActorNameExtractionRunner(
+  context: StoryStepGenerationContext
+): (prompt: string) => Promise<string> {
+  return async (prompt: string): Promise<string> => {
+    const result = await context.backend.generateLlm(
+      rpNovelLlmRequestConfig(context.config, prompt, {
+        max_tokens: Math.min(context.config.llm.max_tokens, 80),
+        temperature: 0,
+        stop: RP_NOVEL_STOP,
+        debug_no_log: true
+      }),
+      { signal: context.abortSignal }
+    );
+
+    return result.text;
   };
 }
 
