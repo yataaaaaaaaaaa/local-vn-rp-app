@@ -2,6 +2,15 @@ import type { BackendRuntimeConfig } from "@local-vn/shared-types";
 import type { StoryNodeFields } from "@local-vn/story-domain";
 
 import type { StoryGenerationBackend } from "../ports";
+import { LIGHTING_AGENT } from "./rp-engine/agents/lighting-agent";
+import { LOCATION_AGENT } from "./rp-engine/agents/location-agent";
+import { NPC_CLOTHING_AGENT } from "./rp-engine/agents/npc-clothing-agent";
+import { ROMANCE_AGENT } from "./rp-engine/agents/romance-agent";
+import { SEX_SCENE_AGENT } from "./rp-engine/agents/sex-scene-agent";
+import { TIME_OF_DAY_AGENT } from "./rp-engine/agents/time-of-day-agent";
+import type { RpAgent } from "./rp-engine/agents/types";
+import { USER_CLOTHING_AGENT } from "./rp-engine/agents/user-clothing-agent";
+import { WEATHER_AGENT } from "./rp-engine/agents/weather-agent";
 import {
     addSingleTagChoiceByNumber,
     addTagsFromQuestion,
@@ -292,6 +301,17 @@ const TIME_OF_DAY_TAGS: AllowedTag[] = [
     { tag: "midnight" }
 ];
 
+const VISUAL_PLANNING_AGENTS: RpAgent[] = [
+    ROMANCE_AGENT,
+    TIME_OF_DAY_AGENT,
+    LOCATION_AGENT,
+    WEATHER_AGENT,
+    LIGHTING_AGENT,
+    USER_CLOTHING_AGENT,
+    NPC_CLOTHING_AGENT,
+    SEX_SCENE_AGENT
+];
+
 export interface VisualPromptPlanResult {
     resolverText: string;
     traceEntries: ResolverTextTraceEntry[];
@@ -328,6 +348,7 @@ export async function generateVisualPromptPlan(input: {
         trace
     };
 
+    applyVisualPlanningAgentsToPlan(plan, runtime, input.node);
 
     plan.fixedTags.push(...await selectActionCompositionTreeTags({
         tree: input.actionCompositionTree,
@@ -509,7 +530,7 @@ export async function generateVisualPromptPlan(input: {
             key: "background_group",
             question: "Choose the main background group by number.",
             allowedTags: BACKGROUND_GROUP_TAGS,
-            fallback: "simple background",
+            fallback: stringFact(runtime.facts.scene_location) ?? "simple background",
             example: "10"
         });
 
@@ -534,7 +555,7 @@ export async function generateVisualPromptPlan(input: {
         key: "time_of_day",
         question: "Which time-of-day tag best describes the scene?",
         allowedTags: TIME_OF_DAY_TAGS,
-        fallback: ["day"],
+        fallback: [stringFact(runtime.facts.time_of_day) ?? "day"],
         example: "The tag that describes the image is: night."
     });
 
@@ -547,6 +568,18 @@ export async function generateVisualPromptPlan(input: {
         }),
         traceEntries: trace.entries()
     };
+}
+
+function applyVisualPlanningAgentsToPlan(
+    plan: VisualPromptPlan,
+    runtime: VisualPlannerRuntime,
+    node: StoryNodeFields
+): void {
+    for (const agent of VISUAL_PLANNING_AGENTS) {
+        const contribution = agent.run({ node });
+        Object.assign(runtime.facts, contribution.facts);
+        plan.fixedTags.push(...contribution.fixedTags);
+    }
 }
 
 async function addFullOutfitTags(
@@ -662,4 +695,8 @@ function clothingVisible(regions: string[]): boolean {
 
 function regionVisible(regions: string[], candidates: string[]): boolean {
     return hasTagAmong(regions, candidates);
+}
+
+function stringFact(value: unknown): string | null {
+    return typeof value === "string" && value.trim() ? value.trim() : null;
 }

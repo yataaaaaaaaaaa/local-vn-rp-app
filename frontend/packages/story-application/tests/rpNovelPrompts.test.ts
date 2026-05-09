@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   RP_DIALOGUE_STOP,
-  RP_NOVEL_PRESET,
   buildAutomaticUserAnswerPromptWithActorNameCache,
   buildRpAnswerPromptWithActorNameCache,
   buildVisualRepresentationPromptWithActorNameCache,
@@ -44,15 +43,7 @@ function buildVisualPrompt(
 }
 
 describe("RP novel prompts", () => {
-  it("uses the Mistral RP sampler baseline without assistant-label hard stops", () => {
-    expect(RP_NOVEL_PRESET).toMatchObject({
-      prompt_format: "mistral_inst",
-      temperature: 0.7,
-      top_p: 1,
-      top_k: 40,
-      min_p: 0.05,
-      repeat_penalty: 1
-    });
+  it("uses RP stop sequences without assistant-label hard stops", () => {
     expect(RP_DIALOGUE_STOP).toContain("</s>");
     expect(RP_DIALOGUE_STOP).not.toContain("\nAssistant:");
     expect(RP_DIALOGUE_STOP).not.toContain("\nPrompt:");

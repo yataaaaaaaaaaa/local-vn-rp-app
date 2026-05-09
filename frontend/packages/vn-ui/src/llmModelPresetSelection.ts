@@ -1,5 +1,4 @@
 import type { BackendRuntimeConfig } from "@local-vn/shared-types";
-import { RP_NOVEL_PRESET } from "@local-vn/story-application";
 
 export type PickedLlmPresetResult = {
     label: string;
@@ -14,9 +13,8 @@ export function presetForPickedLlmModelPath(modelPath: string): PickedLlmPresetR
 
     if (FORGOTTEN_SAFEWORD_RE.test(fileName)) {
         return {
-            label: "RP_NOVEL_PRESET",
+            label: "Selected RP LLM",
             patch: {
-                ...RP_NOVEL_PRESET,
                 model_path: modelPath
             }
         };
