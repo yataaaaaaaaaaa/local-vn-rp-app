@@ -85,6 +85,15 @@ export function BackendConfigPanel() {
     } as Partial<BackendRuntimeConfig["image"]>);
   }
 
+  function patchNoveltyNumber<K extends NumberKey<BackendRuntimeConfig["novelty"]>>(
+    key: K,
+    value: string
+  ) {
+    patchSection("novelty", {
+      [key]: Number(value)
+    } as Partial<BackendRuntimeConfig["novelty"]>);
+  }
+
   return (
     <section className="panel backend-config-panel">
       <div className="panel-header">
@@ -378,6 +387,98 @@ export function BackendConfigPanel() {
               }
             />
           </label>
+
+          <h3>Novelty Orchestration</h3>
+          <p className="small">
+            These controls balance the romance, cliché, sex-scene, and NPC-personna
+            agents. Candidate ideas are preselected in code, then a hidden RP LLM
+            checks one idea at a time for coherence before the final prompt receives
+            a single TURN_REDIRECT.
+          </p>
+          <div className="grid three">
+            <NumberInput
+              label="Novelty level"
+              value={config.novelty.level}
+              min={0}
+              max={2}
+              step="0.05"
+              onChange={(value) => patchNoveltyNumber("level", value)}
+            />
+            <NumberInput
+              label="Detail budget"
+              value={config.novelty.detail_budget}
+              min={0}
+              max={2}
+              step="0.05"
+              onChange={(value) => patchNoveltyNumber("detail_budget", value)}
+            />
+            <NumberInput
+              label="Repetition guard"
+              value={config.novelty.repetition_guard}
+              min={0}
+              max={2}
+              step="0.05"
+              onChange={(value) => patchNoveltyNumber("repetition_guard", value)}
+            />
+          </div>
+          <div className="grid three">
+            <NumberInput
+              label="Coherence retries"
+              value={config.novelty.coherence_retries}
+              min={0}
+              max={6}
+              step="1"
+              onChange={(value) => patchNoveltyNumber("coherence_retries", value)}
+            />
+            <NumberInput
+              label="Candidate pool"
+              value={config.novelty.candidate_pool_size}
+              min={1}
+              max={20}
+              step="1"
+              onChange={(value) => patchNoveltyNumber("candidate_pool_size", value)}
+            />
+          </div>
+          <div className="grid four">
+            <NumberInput
+              label="Agent influence"
+              value={config.novelty.agent_influence}
+              min={0}
+              max={2}
+              step="0.05"
+              onChange={(value) => patchNoveltyNumber("agent_influence", value)}
+            />
+            <NumberInput
+              label="Romance cliché"
+              value={config.novelty.romance_cliche_influence}
+              min={0}
+              max={2}
+              step="0.05"
+              onChange={(value) =>
+                patchNoveltyNumber("romance_cliche_influence", value)
+              }
+            />
+            <NumberInput
+              label="NPC personna"
+              value={config.novelty.npc_personna_influence}
+              min={0}
+              max={2}
+              step="0.05"
+              onChange={(value) =>
+                patchNoveltyNumber("npc_personna_influence", value)
+              }
+            />
+            <NumberInput
+              label="Sex scene"
+              value={config.novelty.sex_scene_influence}
+              min={0}
+              max={2}
+              step="0.05"
+              onChange={(value) =>
+                patchNoveltyNumber("sex_scene_influence", value)
+              }
+            />
+          </div>
 
           <div className="button-row">
             <button

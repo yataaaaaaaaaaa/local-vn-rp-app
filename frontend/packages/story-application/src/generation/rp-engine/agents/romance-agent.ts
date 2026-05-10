@@ -1,17 +1,26 @@
 import type { StoryNodeFields } from "@local-vn/story-domain";
 
 import { normalizeContextSnippet, splitSentences } from "../cleaning/text-utils";
-import { noveltyPlanFromBeat, selectRomanceBeat, type NoveltyPlanningContext } from "../novelty/novelty-planner";
+import { selectRomanceBeat, type CandidateScoringContext } from "../novelty/candidate-scoring";
 import { PLAYER_RESPONSE_BEATS } from "../novelty/player-beat-deck";
 import { latestPreviousTurnFromContext, previousTurnCount } from "../state/story-context";
-import type { AdvancementCard, BeatType, RomancePhase, RpPromptInput } from "../types";
+import type { AdvancementCard, RomanceClicheFacet, RomanceClicheNoveltyContext, RomancePhase, RpPromptInput } from "../types";
 import { promptInputFromAgentRun } from "./agent-run-helpers";
-import type { RpAgent } from "./types";
+import type { AgentNoveltyCandidate, AgentNote, RpAgent } from "./types";
 
-type RomancePromptView = NoveltyPlanningContext & {
+type RomancePromptView = CandidateScoringContext & {
   closenessLabel: string;
   phaseLabel: string;
   openHook: string;
+  clicheDetailSummary: string;
+  clicheDetailLifetimes: string[];
+  clicheTargetFacets: string[];
+  clicheFamilies: string[];
+  clicheNoveltyInstruction: string;
+};
+
+type ClicheFacetDefinition = Omit<RomanceClicheFacet, "observed"> & {
+  patterns: RegExp[];
 };
 
 type ClosenessLevel = {
@@ -28,7 +37,11 @@ export const ROMANCE_AGENT: RpAgent = {
 
     return {
       facts: {
-        romance_state: romancePromptViewToText(romance)
+        romance_state: romancePromptViewToText(romance),
+        romance_cliche_state: romance.romanceCliches?.detailSummary ?? "No romantic-cliche facets are currently selected.",
+        romance_cliche_detail_lifetimes: romance.romanceCliches?.detailLifetimes ?? [],
+        romance_cliche_targets: romance.romanceCliches?.targetFacets ?? [],
+        romance_cliche_families: romance.romanceCliches?.families ?? []
       },
       fixedTags: [],
       promptViews: {
@@ -36,34 +49,56 @@ export const ROMANCE_AGENT: RpAgent = {
       },
       novelty: {
         context: romancePromptViewToNoveltyContext(romance)
-      }
+      },
+      notes: romanceNotes(romance),
+      candidates: romanceClicheCandidates(romance)
     };
   }
 };
 
-export function selectRomanceAdvancement(input: RpPromptInput, context: NoveltyPlanningContext): AdvancementCard {
-  return selectRomanceBeat(input, ROMANCE_BEATS, context);
+function romanceNotes(state: RomancePromptView): AgentNote[] {
+  return [
+    {
+      source: "romance",
+      text: [
+        `phase=${state.phaseLabel}`,
+        `closeness=${state.closeness}/10 (${state.closenessLabel})`,
+        `tension=${state.currentTension}`,
+        `callback=${state.callbackDetail}`,
+        `cliche facets=${state.romanceCliches?.targetFacets.join(", ") || "none"}`,
+        state.boundaryDetected ? "boundary language is present" : "no active boundary detected"
+      ].join("; ")
+    }
+  ];
 }
 
-export function selectVisualRomanceAdvancement(input: RpPromptInput, context: NoveltyPlanningContext): AdvancementCard {
+function romanceClicheCandidates(state: RomancePromptView): AgentNoveltyCandidate[] {
+  const facets = state.romanceCliches?.facets ?? [];
+  return facets.slice(0, 8).map((facet) => ({
+    id: `romance-cliche:${facet.facet}`,
+    source: "romance_cliche",
+    weight: facet.observed ? 0.85 : 0.55,
+    label: facet.label,
+    text: [
+      `Use one romantic-cliché redirect (${facet.label}): ${facet.directive}`,
+      `Constraint: ${facet.constraint}`,
+      `Avoid: ${facet.avoid}`,
+      "Use it as the only new romantic trope this turn."
+    ].join(" "),
+    rationale: `Romance cliche candidate from ${facet.family} facet during ${state.phaseLabel}.`,
+  }));
+}
+
+export function romanceAdvancementDeck(): AdvancementCard[] {
+  return ROMANCE_BEATS;
+}
+
+export function playerResponseAdvancementDeck(): AdvancementCard[] {
+  return PLAYER_RESPONSE_BEATS;
+}
+
+export function selectVisualRomanceAdvancement(input: RpPromptInput, context: CandidateScoringContext): AdvancementCard {
   return selectRomanceBeat(input, VISUAL_ROMANCE_BEATS, context);
-}
-
-export function getRomanceBeat(id: BeatType): AdvancementCard {
-  return (
-    ROMANCE_BEATS.find((card) => card.id === id) ??
-    PLAYER_RESPONSE_BEATS.find((card) => card.id === id) ??
-    VISUAL_ROMANCE_BEATS.find((card) => card.id === id) ??
-    ROMANCE_BEATS[0]!
-  );
-}
-
-export function noveltyPlanForRomanceBeat(
-  beat: AdvancementCard,
-  context: NoveltyPlanningContext,
-  forbiddenFragments: string[]
-) {
-  return noveltyPlanFromBeat(beat, context, forbiddenFragments);
 }
 
 function estimateRomancePromptView(input: RpPromptInput): RomancePromptView {
@@ -95,6 +130,9 @@ function estimateRomancePromptView(input: RpPromptInput): RomancePromptView {
 
   closeness = clampInteger(closeness, 0, 10);
   const phase = phaseForCloseness(closeness, turnCount);
+  const boundaryDetected = Boolean(input.boundaryDetected) || detectPacingBoundaryCue(text);
+  const callbackDetail = inferCallbackDetail(input.node);
+  const romanceCliches = extractRomanticClicheState(text, closeness, phase, boundaryDetected, callbackDetail);
 
   return {
     closeness,
@@ -103,8 +141,14 @@ function estimateRomancePromptView(input: RpPromptInput): RomancePromptView {
     phaseLabel: PHASE_LABELS[phase],
     currentTension: inferCurrentTension(text),
     openHook: inferOpenHook(input.node),
-    callbackDetail: inferCallbackDetail(input.node),
-    boundaryDetected: Boolean(input.boundaryDetected) || detectPacingBoundaryCue(text)
+    callbackDetail,
+    boundaryDetected,
+    romanceCliches,
+    clicheDetailSummary: romanceCliches.detailSummary,
+    clicheDetailLifetimes: romanceCliches.detailLifetimes,
+    clicheTargetFacets: romanceCliches.targetFacets,
+    clicheFamilies: romanceCliches.families,
+    clicheNoveltyInstruction: romanceCliches.noveltyInstruction
   };
 }
 
@@ -115,18 +159,70 @@ function romancePromptViewToText(state: RomancePromptView): string {
     `current tension: ${state.currentTension}`,
     `open hook: ${state.openHook}`,
     `callback detail: ${state.callbackDetail}`,
+    `romantic cliche facets: ${state.romanceCliches?.detailSummary ?? "(none)"}`,
+    `romantic cliche lifetimes: ${state.romanceCliches?.detailLifetimes.join("; ") || "(none)"}`,
     state.boundaryDetected ? "boundary language is present" : "no active boundary detected"
   ].join("\n");
 }
 
-function romancePromptViewToNoveltyContext(state: RomancePromptView): NoveltyPlanningContext {
+function romancePromptViewToNoveltyContext(state: RomancePromptView): CandidateScoringContext {
   return {
     closeness: state.closeness,
     phase: state.phase,
     currentTension: state.currentTension,
     callbackDetail: state.callbackDetail,
-    boundaryDetected: state.boundaryDetected
+    boundaryDetected: state.boundaryDetected,
+    romanceCliches: state.romanceCliches
   };
+}
+
+export function extractRomanticClicheState(
+  text: string,
+  closeness = 3,
+  phase: RomancePhase = "charge",
+  boundaryDetected = false,
+  callbackDetail = "(none)"
+): RomanceClicheNoveltyContext {
+  const available = ROMANTIC_CLICHE_FACETS.filter((facet) => {
+    if (boundaryDetected && !facet.tags.includes("repair") && facet.tags.some((tag) => tag === "touch" || tag === "kiss" || tag === "jealousy")) return false;
+    return facet.minCloseness <= closeness + 1 && facet.phases.includes(phase);
+  });
+
+  const observed = ROMANTIC_CLICHE_FACETS.filter((facet) => facet.patterns.some((pattern) => pattern.test(text)));
+  const source = observed.length ? observed : available;
+  const targetPool = source.length ? source : ROMANTIC_CLICHE_FACETS.filter((facet) => facet.minCloseness <= closeness + 1);
+  const facets = targetPool.slice(0, 12).map((facet) => toObservedFacet(facet, observed.some((item) => item.facet === facet.facet)));
+  const persistentDetails = facets
+    .filter((facet) => facet.lifetime === "scene" || facet.lifetime === "relationship" || facet.lifetime === "arc")
+    .map((facet) => `${facet.family}:${facet.label} [${facet.lifetime}]`);
+  const beatDetails = facets
+    .filter((facet) => facet.lifetime === "instant" || facet.lifetime === "beat")
+    .map((facet) => `${facet.family}:${facet.label} [${facet.lifetime}]`);
+  const detailLifetimes = [...persistentDetails, ...beatDetails];
+  const targetFacets = facets.slice(0, 6).map((facet) => `${facet.family}:${facet.label}`);
+  const families = [...new Set(facets.map((facet) => facet.family))];
+  const callback = callbackDetail && callbackDetail !== "(none)" ? ` Callback available: ${callbackDetail}.` : "";
+
+  return {
+    active: facets.length > 0,
+    detailSummary: facets.length
+      ? facets.map((facet) => `${facet.family}=${facet.label}${facet.observed ? " (observed)" : ""}`).join("; ")
+      : "No romantic-cliche facets are currently selected.",
+    detailLifetimes,
+    facets,
+    targetFacets,
+    persistentDetails,
+    beatDetails,
+    noveltyInstruction: facets.length
+      ? `Use at most one romantic cliche facet as the novelty lever; preserve scene/relationship/arc lifetime details unless the current text explicitly changes them.${callback}`
+      : `No romantic cliche facet is active; use ordinary romance novelty.${callback}`,
+    families
+  };
+}
+
+function toObservedFacet(facet: ClicheFacetDefinition, observed: boolean): RomanceClicheFacet {
+  const { patterns, ...rest } = facet;
+  return { ...rest, observed };
 }
 
 function phaseForCloseness(closeness: number, turnCount: number): RomancePhase {
@@ -203,6 +299,269 @@ const PHASE_LABELS: Record<RomancePhase, string> = {
   intimacy: "Intimacy: adult consensual escalation or fade-to-black threshold",
   resolution: "Resolution: aftermath, promise, final callback, closure"
 };
+
+const ROMANTIC_CLICHE_FACETS: ClicheFacetDefinition[] = [
+  {
+    facet: "locked_gaze",
+    label: "locked eye contact",
+    family: "gaze",
+    lifetime: "instant",
+    minCloseness: 1,
+    phases: ["spark", "charge", "trust", "threshold", "intimacy", "resolution"],
+    tags: ["cliche", "gaze", "subtext", "low-intensity"],
+    directive: "Use eye contact, a held look, or a look-away as the romantic action instead of adding plot noise.",
+    constraint: "The gaze must not declare the player's feelings; it only creates an opening.",
+    avoid: "Do not loop the same blush-and-stare beat.",
+    patterns: [/\b(?:eyes? meet|held (?:his|her|their) gaze|locked eyes|looked away|could not look away|caught (?:him|her|them) staring)\b/i]
+  },
+  {
+    facet: "shared_shelter",
+    label: "shared umbrella or shelter",
+    family: "weather",
+    lifetime: "scene",
+    minCloseness: 2,
+    phases: ["spark", "charge", "trust", "threshold"],
+    tags: ["cliche", "shelter", "proximity", "setting"],
+    directive: "Use a rain, snow, wind, or doorway shelter setup to make closeness practical before it becomes emotional.",
+    constraint: "Shelter may narrow distance, but it must not force touch or acceptance.",
+    avoid: "Do not add sudden weather if the scene already has a different stable setting.",
+    patterns: [/\b(?:umbrella|rain|downpour|storm|snow|shared shelter|under the awning|doorway|porch|coat over)\b/i]
+  },
+  {
+    facet: "accidental_touch",
+    label: "accidental hand brush",
+    family: "touch",
+    lifetime: "instant",
+    minCloseness: 2,
+    phases: ["spark", "charge", "trust"],
+    tags: ["cliche", "touch", "spark", "agency"],
+    directive: "Use one brief accidental brush of hands, sleeves, shoulders, or reaching for the same object as a spark.",
+    constraint: "Make it brief and reversible; do not decide the player's reaction.",
+    avoid: "Do not escalate the accidental touch into guaranteed desire.",
+    patterns: [/\b(?:hands? brush|fingers? brush|same cup|same book|same object|reached at the same time|shoulders? bump|sleeves? touch)\b/i]
+  },
+  {
+    facet: "fixing_detail",
+    label: "fixing hair, ribbon, collar, or tie",
+    family: "care",
+    lifetime: "beat",
+    minCloseness: 3,
+    phases: ["charge", "trust", "threshold", "resolution"],
+    tags: ["cliche", "care", "proximity", "touch"],
+    directive: "Use a tiny grooming or clothing adjustment as a permission-aware excuse for closeness.",
+    constraint: "Ask, hover, or offer before touching; preserve refusal and redirect options.",
+    avoid: "Do not make the player passive or silently consenting.",
+    patterns: [/\b(?:fix(?:es|ed|ing)? (?:his|her|their|your)? ?(?:hair|ribbon|collar|tie|scarf|button)|brush(?:es|ed)? (?:hair|lint|dust)|straighten(?:s|ed)? (?:collar|tie|scarf))\b/i]
+  },
+  {
+    facet: "offer_warmth",
+    label: "offered coat, blanket, or warmth",
+    family: "care",
+    lifetime: "scene",
+    minCloseness: 2,
+    phases: ["spark", "charge", "trust", "threshold", "intimacy", "resolution"],
+    tags: ["cliche", "care", "comfort", "setting"],
+    directive: "Use an offered coat, blanket, warm drink, or seat near warmth as practical tenderness.",
+    constraint: "Offer care without implying ownership or deciding the player's comfort.",
+    avoid: "Do not turn protective care possessive.",
+    patterns: [/\b(?:coat|blanket|shawl|scarf|warm drink|tea|coffee|fireplace|warmth|shivering|cold)\b/i]
+  },
+  {
+    facet: "shared_drink",
+    label: "shared drink or dessert",
+    family: "domestic",
+    lifetime: "scene",
+    minCloseness: 2,
+    phases: ["spark", "charge", "trust"],
+    tags: ["cliche", "domestic", "banter", "low-intensity"],
+    directive: "Use tea, coffee, dessert, or a shared cup as a soft route into teasing or honesty.",
+    constraint: "Keep it conversational and grounded in the current setting.",
+    avoid: "Do not make the shared object magical proof of destiny.",
+    patterns: [/\b(?:tea|coffee|cup|glass|dessert|cake|spoon|shared drink|sip|taste this)\b/i]
+  },
+  {
+    facet: "walk_home",
+    label: "walk home or escort offer",
+    family: "transition",
+    lifetime: "scene",
+    minCloseness: 3,
+    phases: ["charge", "trust", "threshold", "resolution"],
+    tags: ["cliche", "care", "transition", "choice"],
+    directive: "Use an offer to walk together, wait together, or escort as a low-pressure transition beat.",
+    constraint: "The player must be able to decline, walk separately, or redirect the destination.",
+    avoid: "Do not trap the player into being alone.",
+    patterns: [/\b(?:walk (?:you )?home|escort|go with you|wait with you|see you home|take you back|path home)\b/i]
+  },
+  {
+    facet: "private_dance",
+    label: "private dance or guided step",
+    family: "movement",
+    lifetime: "scene",
+    minCloseness: 4,
+    phases: ["charge", "trust", "threshold", "resolution"],
+    tags: ["cliche", "dance", "proximity", "choice"],
+    directive: "Use a dance, guided step, or near-dance as a mutual rhythm test.",
+    constraint: "Frame it as an invitation, not a completed acceptance.",
+    avoid: "Do not describe the player's body moving unless the player chose it.",
+    patterns: [/\b(?:dance|waltz|music|guide(?:s|d)? (?:his|her|their|your)? ?step|hand at (?:his|her|their|your)? ?waist)\b/i]
+  },
+  {
+    facet: "almost_kiss",
+    label: "almost kiss",
+    family: "threshold",
+    lifetime: "beat",
+    minCloseness: 5,
+    phases: ["trust", "threshold", "intimacy"],
+    tags: ["cliche", "kiss", "restraint", "consent"],
+    directive: "Use an almost-kiss, pause before a kiss, or stopped-short closeness as a consent-aware threshold.",
+    constraint: "Do not complete the kiss unless consent is already explicit in context or the user authored it.",
+    avoid: "Do not repeat almost-kiss interruptions every turn.",
+    patterns: [/\b(?:almost kiss(?:es)?|near-kiss|nearly kiss(?:es)?|lips? almost|stopp(?:ed|ing) short|paused before (?:the )?kiss|not quite kissing)\b/i]
+  },
+  {
+    facet: "caught_stumble",
+    label: "caught from a stumble",
+    family: "support",
+    lifetime: "instant",
+    minCloseness: 2,
+    phases: ["spark", "charge", "trust"],
+    tags: ["cliche", "support", "touch", "care"],
+    directive: "Use catching, steadying, or bracing from a stumble as a brief support beat.",
+    constraint: "Keep the support practical and immediately releasable.",
+    avoid: "Do not injure or endanger characters just to force closeness.",
+    patterns: [/\b(?:stumble|trip|catch(?:es|ing)?|steady(?:ing|ies|ied)|brace(?:s|d)?|grabbed (?:his|her|their)? ?arm)\b/i]
+  },
+  {
+    facet: "sleepy_vigil",
+    label: "sleepy vigil or staying up",
+    family: "care",
+    lifetime: "scene",
+    minCloseness: 5,
+    phases: ["trust", "threshold", "intimacy", "resolution"],
+    tags: ["cliche", "care", "vulnerability", "quiet"],
+    directive: "Use staying nearby, keeping watch, or refusing to leave as quiet care.",
+    constraint: "Do not make care surveillance or control; keep it offered and gentle.",
+    avoid: "Do not make the player helpless.",
+    patterns: [/\b(?:stay up|kept watch|sat beside|fell asleep beside|dozed|vigil|would not leave|kept (?:him|her|them) company)\b/i]
+  },
+  {
+    facet: "domestic_tenderness",
+    label: "ordinary domestic tenderness",
+    family: "domestic",
+    lifetime: "scene",
+    minCloseness: 4,
+    phases: ["trust", "threshold", "intimacy", "resolution"],
+    tags: ["cliche", "domestic", "care", "softness"],
+    directive: "Use cooking, tidying, washing cups, sharing a table, or a quiet routine as intimacy without spectacle.",
+    constraint: "Keep the detail small and grounded; do not imply permanent commitment unless resolution is active.",
+    avoid: "Do not turn the scene into a montage.",
+    patterns: [/\b(?:cook|breakfast|kitchen|dishes|laundry|fold(?:ing)?|table|home|domestic|morning light|shared meal)\b/i]
+  },
+  {
+    facet: "token_exchange",
+    label: "keepsake or token exchange",
+    family: "callback",
+    lifetime: "relationship",
+    minCloseness: 4,
+    phases: ["trust", "threshold", "resolution"],
+    tags: ["cliche", "callback", "gift", "memory"],
+    directive: "Use a ribbon, ring, flower, book, note, glove, or other established token as a romantic memory anchor.",
+    constraint: "Prefer an existing object; if introducing a token, keep it small and scene-plausible.",
+    avoid: "Do not invent a grand heirloom or promise ring out of nowhere.",
+    patterns: [/\b(?:ring|ribbon|flower|book|letter|note|glove|necklace|keepsake|token|gift|promise)\b/i]
+  },
+  {
+    facet: "name_softening",
+    label: "name softening or nickname",
+    family: "dialogue",
+    lifetime: "relationship",
+    minCloseness: 3,
+    phases: ["charge", "trust", "threshold", "intimacy", "resolution"],
+    tags: ["cliche", "dialogue", "recognition", "intimacy"],
+    directive: "Use a first name, softened title, or nickname as the sign that the dynamic changed.",
+    constraint: "Only use a nickname if it fits the established tone and does not insult the player.",
+    avoid: "Do not overuse pet names.",
+    patterns: [/\b(?:first name|nickname|called (?:him|her|them) by name|said (?:his|her|their) name|softened (?:his|her|their) name)\b/i]
+  },
+  {
+    facet: "mild_jealousy",
+    label: "mild jealousy without ownership",
+    family: "friction",
+    lifetime: "beat",
+    minCloseness: 5,
+    phases: ["trust", "threshold"],
+    tags: ["cliche", "jealousy", "friction", "choice"],
+    directive: "Use a tiny flicker of jealousy as vulnerability, then immediately make room for honesty or reassurance.",
+    constraint: "Jealousy must never become ownership, accusation, stalking, or punishment.",
+    avoid: "Do not introduce a rival character just to trigger jealousy.",
+    patterns: [/\b(?:jealous|envy|rival|someone else|looked at them|possessive|mine)\b/i]
+  },
+  {
+    facet: "reunion_pause",
+    label: "reunion pause",
+    family: "transition",
+    lifetime: "beat",
+    minCloseness: 4,
+    phases: ["trust", "threshold", "resolution"],
+    tags: ["cliche", "reunion", "restraint", "emotion"],
+    directive: "Use the first second after seeing each other again as the whole romantic beat.",
+    constraint: "Keep it compact; one look, one unfinished line, or one offered step is enough.",
+    avoid: "Do not summarize the whole separation.",
+    patterns: [/\b(?:again|returned|came back|reunion|after so long|first saw|at the station|at the gate)\b/i]
+  },
+  {
+    facet: "farewell_linger",
+    label: "lingering farewell",
+    family: "transition",
+    lifetime: "beat",
+    minCloseness: 3,
+    phases: ["charge", "trust", "threshold", "resolution"],
+    tags: ["cliche", "farewell", "restraint", "choice"],
+    directive: "Use a goodbye that lasts one beat too long as the romantic signal.",
+    constraint: "The farewell must leave the player free to go, stay, or say something.",
+    avoid: "Do not force a chase or melodramatic airport scene unless it is already set up.",
+    patterns: [/\b(?:goodbye|farewell|leave|leaving|last train|door closed|linger(?:ed|ing)?|one more minute)\b/i]
+  },
+  {
+    facet: "secret_place",
+    label: "secret or favorite place",
+    family: "setting",
+    lifetime: "arc",
+    minCloseness: 4,
+    phases: ["trust", "threshold", "resolution"],
+    tags: ["cliche", "setting", "trust", "callback"],
+    directive: "Use a favorite place, rooftop, garden, archive corner, pier, or overlook as an intimacy anchor.",
+    constraint: "It must be offered as trust, not used to isolate or trap the player.",
+    avoid: "Do not relocate the scene if the current turn is clearly mid-action elsewhere.",
+    patterns: [/\b(?:rooftop|garden|favorite place|secret place|hideaway|overlook|pier|balcony|archive corner|quiet corner)\b/i]
+  },
+  {
+    facet: "protective_cover",
+    label: "protective cover without possession",
+    family: "care",
+    lifetime: "scene",
+    minCloseness: 4,
+    phases: ["trust", "threshold", "intimacy"],
+    tags: ["cliche", "protective", "care", "agency"],
+    directive: "Use shielding from rain, crowd, cold, embarrassment, or view as practical care.",
+    constraint: "Care must be optional and non-possessive; the player can step away.",
+    avoid: "Do not use danger, dominance, or control to manufacture romance.",
+    patterns: [/\b(?:shield(?:ed|ing)?|covered (?:him|her|them)|blocked the view|hid(?:den)? from sight|crowd|pulled the curtain|closed the door)\b/i]
+  },
+  {
+    facet: "forehead_touch",
+    label: "forehead touch or hand check",
+    family: "care",
+    lifetime: "beat",
+    minCloseness: 5,
+    phases: ["trust", "threshold", "intimacy", "resolution"],
+    tags: ["cliche", "care", "touch", "tenderness"],
+    directive: "Use a forehead touch, temperature check, or hand-over-hand care as tenderness.",
+    constraint: "Make permission explicit or implied only by already established consent; never decide the player's response.",
+    avoid: "Do not infantilize the player.",
+    patterns: [/\b(?:forehead|temperature|fever|hand over (?:his|her|their)? ?hand|pressed (?:his|her|their)? ?hand|touched (?:his|her|their)? ?forehead)\b/i]
+  }
+];
 
 const ROMANCE_BEATS: AdvancementCard[] = [
   {
@@ -375,6 +734,315 @@ const ROMANCE_BEATS: AdvancementCard[] = [
       "Offer a clear romantic next step: stay, come closer, take a hand, dance, talk honestly, or invite a kiss if earned.",
     constraint: "Frame the invitation so refusal or slowing down remains easy and safe.",
     avoid: "Do not complete the player's acceptance."
+  },
+  {
+    id: "cliche_locked_gaze",
+    label: "Cliche: locked gaze",
+    weight: 9,
+    minCloseness: 1,
+    typicalAfter: 3,
+    phases: ["spark", "charge", "trust", "threshold"],
+    tags: ["cliche", "gaze", "subtext", "low-intensity"],
+    directive: "Use one held look, look-away, or caught stare as the familiar romantic signal.",
+    constraint: "The gaze must create an opening, not declare the player's inner feelings.",
+    avoid: "Do not pair it with generic blushing unless the blush is already in context."
+  },
+  {
+    id: "cliche_shared_shelter",
+    label: "Cliche: shared shelter",
+    weight: 8,
+    minCloseness: 2,
+    typicalAfter: 4,
+    phases: ["spark", "charge", "trust"],
+    tags: ["cliche", "shelter", "proximity", "setting"],
+    directive: "Use shared shelter from rain, snow, wind, crowding, or a doorway to make closeness practical.",
+    constraint: "Do not add a new weather event if it contradicts the visible scene.",
+    avoid: "Do not force physical contact; closeness can be spatial only."
+  },
+  {
+    id: "cliche_accidental_touch",
+    label: "Cliche: accidental touch",
+    weight: 9,
+    minCloseness: 2,
+    typicalAfter: 4,
+    phases: ["spark", "charge", "trust"],
+    tags: ["cliche", "touch", "spark", "agency"],
+    directive: "Use a brief accidental brush of hands, sleeves, shoulders, or reaching for the same object.",
+    constraint: "Keep it reversible and do not decide the player's reaction.",
+    avoid: "Do not escalate from accident to assumed desire."
+  },
+  {
+    id: "cliche_fixing_detail",
+    label: "Cliche: fixing a detail",
+    weight: 8,
+    minCloseness: 3,
+    typicalAfter: 5,
+    phases: ["charge", "trust", "threshold"],
+    tags: ["cliche", "care", "proximity", "touch"],
+    directive: "Use fixing hair, a ribbon, a collar, a scarf, a button, or a smudge as a tiny permission-aware closeness beat.",
+    constraint: "Offer or pause before touch unless the text already permits it.",
+    avoid: "Do not make the player silently compliant."
+  },
+  {
+    id: "cliche_offer_warmth",
+    label: "Cliche: offered warmth",
+    weight: 8,
+    minCloseness: 2,
+    typicalAfter: 4,
+    phases: ["spark", "charge", "trust", "threshold", "resolution"],
+    tags: ["cliche", "care", "comfort", "setting"],
+    directive: "Use an offered coat, blanket, seat by the fire, warm drink, or dry cloth as practical tenderness.",
+    constraint: "Offer help without ownership or deciding the player's comfort.",
+    avoid: "Do not turn care into possessiveness."
+  },
+  {
+    id: "cliche_shared_drink",
+    label: "Cliche: shared drink or dessert",
+    weight: 7,
+    minCloseness: 2,
+    typicalAfter: 4,
+    phases: ["spark", "charge", "trust"],
+    tags: ["cliche", "domestic", "banter", "low-intensity"],
+    directive: "Use tea, coffee, dessert, or tasting from the same plate as a low-stakes route into banter or honesty.",
+    constraint: "Keep it grounded in the current setting.",
+    avoid: "Do not make a prop do all the emotional work."
+  },
+  {
+    id: "cliche_walk_home",
+    label: "Cliche: walk home",
+    weight: 7,
+    minCloseness: 3,
+    typicalAfter: 5,
+    phases: ["charge", "trust", "threshold", "resolution"],
+    tags: ["cliche", "care", "transition", "choice"],
+    directive: "Use an offer to walk together, escort, wait, or take the long way as a low-pressure transition.",
+    constraint: "The player can decline, choose the route, or redirect.",
+    avoid: "Do not isolate or corner the player."
+  },
+  {
+    id: "cliche_private_dance",
+    label: "Cliche: private dance",
+    weight: 6,
+    minCloseness: 4,
+    typicalAfter: 6,
+    phases: ["charge", "trust", "threshold", "resolution"],
+    tags: ["cliche", "dance", "proximity", "choice"],
+    directive: "Use a dance, guided step, or improvised rhythm as a mutual closeness test.",
+    constraint: "Make it an invitation; do not narrate the player's body accepting.",
+    avoid: "Do not suddenly add music unless the setting supports it."
+  },
+  {
+    id: "cliche_almost_kiss",
+    label: "Cliche: almost kiss",
+    weight: 8,
+    minCloseness: 5,
+    typicalAfter: 7,
+    phases: ["trust", "threshold", "intimacy"],
+    tags: ["cliche", "kiss", "restraint", "consent"],
+    directive: "Use a pause before a kiss, a stopped-short lean-in, or a near-kiss as a consent-aware threshold.",
+    constraint: "Do not complete the kiss unless explicit consent or prior player-authored consent is already present.",
+    avoid: "Do not repeat interrupted almost-kisses as a loop."
+  },
+  {
+    id: "cliche_caught_stumble",
+    label: "Cliche: caught from a stumble",
+    weight: 6,
+    minCloseness: 2,
+    typicalAfter: 4,
+    phases: ["spark", "charge", "trust"],
+    tags: ["cliche", "support", "touch", "care"],
+    directive: "Use catching, steadying, or bracing from a stumble as one brief support beat.",
+    constraint: "The support must be practical and immediately releasable.",
+    avoid: "Do not create danger or injury solely to force closeness."
+  },
+  {
+    id: "cliche_sleepy_vigil",
+    label: "Cliche: sleepy vigil",
+    weight: 6,
+    minCloseness: 5,
+    typicalAfter: 7,
+    phases: ["trust", "threshold", "intimacy", "resolution"],
+    tags: ["cliche", "care", "vulnerability", "quiet"],
+    directive: "Use staying nearby, keeping watch, or quietly refusing to leave as a care beat.",
+    constraint: "Care must remain offered, not surveillant or controlling.",
+    avoid: "Do not make the player helpless."
+  },
+  {
+    id: "cliche_domestic_tenderness",
+    label: "Cliche: domestic tenderness",
+    weight: 7,
+    minCloseness: 4,
+    typicalAfter: 6,
+    phases: ["trust", "threshold", "intimacy", "resolution"],
+    tags: ["cliche", "domestic", "care", "softness"],
+    directive: "Use cooking, cleaning up, sharing a table, folding fabric, or a quiet ordinary routine as intimacy.",
+    constraint: "Small ordinary detail only; do not imply permanent commitment unless the phase is resolution.",
+    avoid: "Do not turn one reply into a montage."
+  },
+  {
+    id: "cliche_token_exchange",
+    label: "Cliche: token exchange",
+    weight: 7,
+    minCloseness: 4,
+    typicalAfter: 6,
+    phases: ["trust", "threshold", "resolution"],
+    tags: ["cliche", "callback", "gift", "memory"],
+    directive: "Use an established ring, ribbon, book, note, flower, glove, or keepsake as a romantic anchor.",
+    constraint: "Prefer an existing object; any new token must be small and scene-plausible.",
+    avoid: "Do not invent a grand symbolic object out of nowhere."
+  },
+  {
+    id: "cliche_name_softening",
+    label: "Cliche: softened name",
+    weight: 7,
+    minCloseness: 3,
+    typicalAfter: 5,
+    phases: ["charge", "trust", "threshold", "intimacy", "resolution"],
+    tags: ["cliche", "dialogue", "recognition", "intimacy"],
+    directive: "Use a first name, softened title, or fitting nickname as the small sign that the dynamic changed.",
+    constraint: "The name shift must fit tone and must not insult or belittle the player.",
+    avoid: "Do not overuse pet names."
+  },
+  {
+    id: "cliche_mild_jealousy",
+    label: "Cliche: mild jealousy",
+    weight: 4,
+    minCloseness: 5,
+    typicalAfter: 6,
+    phases: ["trust", "threshold"],
+    tags: ["cliche", "jealousy", "friction", "choice"],
+    directive: "Use a tiny flicker of jealousy as vulnerability, then turn it toward honesty or humor.",
+    constraint: "Jealousy must never become ownership, accusation, stalking, or punishment.",
+    avoid: "Do not introduce a rival just to trigger jealousy."
+  },
+  {
+    id: "cliche_reunion_pause",
+    label: "Cliche: reunion pause",
+    weight: 6,
+    minCloseness: 4,
+    typicalAfter: 6,
+    phases: ["trust", "threshold", "resolution"],
+    tags: ["cliche", "reunion", "restraint", "emotion"],
+    directive: "Use the first second after seeing each other again as the whole romantic beat.",
+    constraint: "One look, unfinished line, or offered step is enough.",
+    avoid: "Do not summarize an entire separation."
+  },
+  {
+    id: "cliche_farewell_linger",
+    label: "Cliche: lingering farewell",
+    weight: 6,
+    minCloseness: 3,
+    typicalAfter: 5,
+    phases: ["charge", "trust", "threshold", "resolution"],
+    tags: ["cliche", "farewell", "restraint", "choice"],
+    directive: "Use a goodbye that lasts one beat too long as the romantic signal.",
+    constraint: "Leave the player free to go, stay, or speak.",
+    avoid: "Do not force a chase scene unless the setup already supports it."
+  },
+  {
+    id: "cliche_secret_place",
+    label: "Cliche: secret place",
+    weight: 5,
+    minCloseness: 4,
+    typicalAfter: 6,
+    phases: ["trust", "threshold", "resolution"],
+    tags: ["cliche", "setting", "trust", "callback"],
+    directive: "Use a favorite place, rooftop, garden, archive corner, pier, balcony, or overlook as a trust anchor.",
+    constraint: "Offer the place as trust, not as isolation or entrapment.",
+    avoid: "Do not relocate the scene if the current turn is mid-action elsewhere."
+  },
+  {
+    id: "cliche_protective_cover",
+    label: "Cliche: protective cover",
+    weight: 6,
+    minCloseness: 4,
+    typicalAfter: 6,
+    phases: ["trust", "threshold", "intimacy"],
+    tags: ["cliche", "protective", "care", "agency"],
+    directive: "Use shielding from rain, crowd, cold, view, or embarrassment as practical care.",
+    constraint: "Care must be optional and non-possessive.",
+    avoid: "Do not use danger, dominance, or control to manufacture romance."
+  },
+  {
+    id: "cliche_forehead_touch",
+    label: "Cliche: forehead touch",
+    weight: 5,
+    minCloseness: 5,
+    typicalAfter: 7,
+    phases: ["trust", "threshold", "intimacy", "resolution"],
+    tags: ["cliche", "care", "touch", "tenderness"],
+    directive: "Use a forehead touch, temperature check, or hand-over-hand care as tenderness.",
+    constraint: "Permission must be explicit or already established by context; do not decide the player's response.",
+    avoid: "Do not infantilize the player."
+  },
+
+  {
+    id: "persona_clumsy_mishap",
+    label: "Personna: harmless clumsy mishap",
+    weight: 6,
+    minCloseness: 1,
+    typicalAfter: 4,
+    phases: ["spark", "charge", "trust", "threshold"],
+    tags: ["personna", "clumsy", "mishap", "care", "low-intensity"],
+    directive:
+      "Let the NPC's seeded personna surface through one harmless fumble, dropped object, near-stumble, or badly timed movement that becomes a romantic opening.",
+    constraint:
+      "The mishap must be small, non-injuring, and immediately playable; do not decide the player's reaction or turn it into danger.",
+    avoid: "Do not use slapstick to derail the scene or repeat the same fall gag."
+  },
+  {
+    id: "persona_protective_intercept",
+    label: "Personna: protective intercept",
+    weight: 6,
+    minCloseness: 3,
+    typicalAfter: 6,
+    phases: ["charge", "trust", "threshold", "intimacy"],
+    tags: ["personna", "protective", "sacrifice", "care", "agency"],
+    directive:
+      "Let the NPC's protective streak appear as one practical intercept, shield, cover, or offered position, possibly for an absurdly small reason like thunder, cold, or a bad umbrella angle.",
+    constraint:
+      "Protection must be offered or immediately releasable; never make it possessive, coercive, or a substitute for player choice.",
+    avoid: "Do not invent a serious attack or emergency just to justify protection."
+  },
+  {
+    id: "persona_dumb_sacrifice",
+    label: "Personna: dramatic tiny sacrifice",
+    weight: 4,
+    minCloseness: 3,
+    typicalAfter: 5,
+    phases: ["charge", "trust", "threshold", "resolution"],
+    tags: ["personna", "sacrifice", "dumb_sacrifice", "dramatic", "care"],
+    directive:
+      "Let the NPC overcommit heroically to a tiny inconvenience, then reveal the affection or embarrassment underneath.",
+    constraint:
+      "Keep the stakes tiny and comic-romantic: noise, weather, a spill, a cold seat, a curtain, or a troublesome prop.",
+    avoid: "Do not create violence, disaster, or guilt pressure."
+  },
+  {
+    id: "persona_dere_contradiction",
+    label: "Personna: dere contradiction",
+    weight: 7,
+    minCloseness: 2,
+    typicalAfter: 5,
+    phases: ["spark", "charge", "trust", "threshold", "intimacy"],
+    tags: ["personna", "soft_reversal", "flustered", "cool_to_soft", "truth"],
+    directive:
+      "Let the NPC's dere archetype contradict itself for one beat: sharp words with gentle action, cool phrasing with exact care, shy silence with brave movement, or grand pride with a tiny honest request.",
+    constraint: "The contradiction must deepen the established personna instead of replacing it.",
+    avoid: "Do not swing into a completely different personality."
+  },
+  {
+    id: "persona_signature_tell",
+    label: "Personna: signature tell",
+    weight: 5,
+    minCloseness: 2,
+    typicalAfter: 4,
+    phases: ["spark", "charge", "trust", "threshold", "resolution"],
+    tags: ["personna", "precision", "gift", "callback", "expression"],
+    directive:
+      "Use one stable private tell, speech slip, tiny gift logic, exact observation, or repeated micro-habit as the NPC's character-specific romantic signal.",
+    constraint: "Use one tell only and connect it to the current exchange or established memory.",
+    avoid: "Do not list personality traits in narration; show the tell through action or dialogue."
   },
   {
     id: "boundary_check",

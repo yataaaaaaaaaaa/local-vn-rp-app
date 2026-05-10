@@ -7,9 +7,8 @@ import {
   buildRpAnswerPromptWithActorNameCache,
   buildVisualRepresentationPromptWithActorNameCache,
   rpNovelLlmRequestConfig,
-  type AdvancementCard,
-  type NoveltyPlan,
-  type RpActorNames
+  type AgentDebugTrace,
+  type RpActorNames,
 } from "@local-vn/story-application";
 import type { LlmGenerateRequest } from "@local-vn/shared-types";
 import {
@@ -17,10 +16,14 @@ import {
   useBackendConfigStore,
   useBackendClientStore,
   useRuntimeEventsStore,
-  useStorySessionStore
+  useStorySessionStore,
 } from "@local-vn/stores";
 
 import { useResolvedCurrentNode } from "../useResolvedCurrentNode";
+import { AgentDebugTracePanel } from "./AgentDebugTracePanel";
+import { AttributedAnswerText } from "./AttributedAnswerText";
+import { AnswerAttributionTooltip } from "./AnswerAttributionTooltip";
+import { attributionTargetKey, buildAnswerAttributions, type HoveredAttribution } from "./attribution";
 
 type DebugPromptKind = "dialogue" | "visualDescription" | "userText";
 type DebugStatus =
@@ -33,9 +36,8 @@ type DebugStatus =
   | "cancelled";
 
 type PromptDebugMetadata = {
-  advancementCard?: AdvancementCard;
-  noveltyPlan?: NoveltyPlan;
   actorNames?: RpActorNames | null;
+  agentDebugTrace?: AgentDebugTrace;
 };
 
 const promptOptions: Array<{
@@ -46,18 +48,18 @@ const promptOptions: Array<{
   {
     id: "dialogue",
     label: "NPC dialogue continuation",
-    help: "Uses the same dialogue prompt builder as the normal dialogue step."
+    help: "Uses the same dialogue prompt builder as the normal dialogue step.",
   },
   {
     id: "visualDescription",
     label: "Visible scene cue",
-    help: "Uses the same visual cue prompt builder as the normal visual-description step."
+    help: "Uses the same visual cue prompt builder as the normal visual-description step.",
   },
   {
     id: "userText",
     label: "Automatic user reply",
-    help: "Uses the same prompt builder as the optional LLM player-text step."
-  }
+    help: "Uses the same prompt builder as the optional LLM player-text step.",
+  },
 ];
 
 export function PromptDebugPanel() {
@@ -71,7 +73,9 @@ export function PromptDebugPanel() {
   const connected = useRuntimeEventsStore((state) => state.connected);
   const connectRuntimeEvents = useRuntimeEventsStore((state) => state.connect);
   const latestByJobId = useRuntimeEventsStore((state) => state.latestByJobId);
-  const latestJobIdsByKind = useRuntimeEventsStore((state) => state.latestJobIdsByKind);
+  const latestJobIdsByKind = useRuntimeEventsStore(
+    (state) => state.latestJobIdsByKind,
+  );
   const textByJobId = useRuntimeEventsStore((state) => state.textByJobId);
 
   const [promptKind, setPromptKind] = useState<DebugPromptKind>("dialogue");
@@ -81,20 +85,41 @@ export function PromptDebugPanel() {
   const [error, setError] = useState<string | null>(null);
   const [metadata, setMetadata] = useState<PromptDebugMetadata | null>(null);
   const [debugJobId, setDebugJobId] = useState<string | null>(null);
-  const [baselineLlmJobId, setBaselineLlmJobId] = useState<string | undefined>();
+  const [baselineLlmJobId, setBaselineLlmJobId] = useState<
+    string | undefined
+  >();
   const [waitingForJob, setWaitingForJob] = useState(false);
+  const [hoveredAttribution, setHoveredAttribution] =
+    useState<HoveredAttribution>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const activeOption = useMemo(
-    () => promptOptions.find((option) => option.id === promptKind) ?? promptOptions[0]!,
-    [promptKind]
+    () =>
+      promptOptions.find((option) => option.id === promptKind) ??
+      promptOptions[0]!,
+    [promptKind],
   );
 
   const debugEvent = debugJobId ? latestByJobId[debugJobId] : null;
-  const streamedAnswer = debugJobId ? textByJobId[debugJobId] ?? "" : "";
+  const streamedAnswer = debugJobId ? (textByJobId[debugJobId] ?? "") : "";
   const displayedAnswer = streamedAnswer || answerText;
+  const answerAttributions = useMemo(
+    () => buildAnswerAttributions(displayedAnswer, metadata?.agentDebugTrace),
+    [displayedAnswer, metadata?.agentDebugTrace],
+  );
+  const activeAttributionTargetIds = useMemo(
+    () =>
+      new Set(
+        (hoveredAttribution?.targets ?? []).map((target) =>
+          attributionTargetKey(target),
+        ),
+      ),
+    [hoveredAttribution],
+  );
   const canSend =
-    Boolean(promptText.trim()) && status !== "streaming" && status !== "building-prompt";
+    Boolean(promptText.trim()) &&
+    status !== "streaming" &&
+    status !== "building-prompt";
   const busyElsewhere = Boolean(storyBusy);
   const runtimeBusyHint = Boolean(runtimeStatus?.busy);
 
@@ -148,6 +173,7 @@ export function PromptDebugPanel() {
 
   async function generatePrompt(): Promise<void> {
     setAnswerText("");
+    setHoveredAttribution(null);
     setDebugJobId(null);
     setBaselineLlmJobId(undefined);
     setWaitingForJob(false);
@@ -175,6 +201,7 @@ export function PromptDebugPanel() {
     const controller = new AbortController();
     abortRef.current = controller;
     setAnswerText("");
+    setHoveredAttribution(null);
     setError(null);
     setDebugJobId(null);
     setBaselineLlmJobId(latestJobIdsByKind.llm);
@@ -189,10 +216,10 @@ export function PromptDebugPanel() {
           llmOverridesForPromptKind(
             promptKind,
             config.llm.max_tokens,
-            config.llm.temperature
-          )
+            config.llm.temperature,
+          ),
         ),
-        { signal: controller.signal }
+        { signal: controller.signal },
       );
 
       setAnswerText((current) => current || result.text);
@@ -230,50 +257,73 @@ export function PromptDebugPanel() {
     const input = {
       node,
       storyId,
-      selectedNodeId
+      selectedNodeId,
+      novelty: config.novelty,
     };
-    const runHiddenActorNameExtraction = createHiddenActorNameExtractionRunner();
+    const runHiddenActorNameExtraction =
+      createHiddenActorNameExtractionRunner();
 
     if (kind === "dialogue") {
       const result = await buildRpAnswerPromptWithActorNameCache(
         input,
-        runHiddenActorNameExtraction
+        runHiddenActorNameExtraction,
+        createHiddenNoveltyCoherenceRunner(),
       );
       return {
         prompt: result.prompt,
-        metadata: metadataFromPromptBuildResult(result)
+        metadata: metadataFromPromptBuildResult(result),
       };
     }
 
     if (kind === "userText") {
       const result = await buildAutomaticUserAnswerPromptWithActorNameCache(
         input,
-        runHiddenActorNameExtraction
+        runHiddenActorNameExtraction,
+        createHiddenNoveltyCoherenceRunner(),
       );
       return {
         prompt: result.prompt,
-        metadata: metadataFromPromptBuildResult(result)
+        metadata: metadataFromPromptBuildResult(result),
       };
     }
 
     return {
       prompt: await buildVisualRepresentationPromptWithActorNameCache(
         input,
-        runHiddenActorNameExtraction
+        runHiddenActorNameExtraction,
       ),
-      metadata: null
+      metadata: null,
     };
   }
 
-  function createHiddenActorNameExtractionRunner(): (prompt: string) => Promise<string> {
+  function createHiddenActorNameExtractionRunner(): (
+    prompt: string,
+  ) => Promise<string> {
     return async (prompt: string): Promise<string> => {
       const result = await backendClientOrThrow().generateLlm(
         rpNovelLlmRequestConfig(config, prompt, {
           max_tokens: Math.min(config.llm.max_tokens, 80),
           temperature: 0,
           stop: RP_NOVEL_STOP,
-          debug_no_log: true
-        })
+          debug_no_log: true,
+        }),
+      );
+
+      return result.text;
+    };
+  }
+
+  function createHiddenNoveltyCoherenceRunner(): (
+    prompt: string,
+  ) => Promise<string> {
+    return async (prompt: string): Promise<string> => {
+      const result = await backendClientOrThrow().generateLlm(
+        rpNovelLlmRequestConfig(config, prompt, {
+          max_tokens: 4,
+          temperature: 0,
+          stop: RP_NOVEL_STOP,
+          debug_no_log: true,
+        }),
       );
 
       return result.text;
@@ -281,7 +331,10 @@ export function PromptDebugPanel() {
   }
 
   return (
-    <section className="panel prompt-debug-panel" aria-label="Prompt generation debug panel">
+    <section
+      className="panel prompt-debug-panel"
+      aria-label="Prompt generation debug panel"
+    >
       <details open>
         <summary className="prompt-debug-summary">
           <span>
@@ -300,7 +353,9 @@ export function PromptDebugPanel() {
                 onChange={(event) =>
                   setPromptKind(event.currentTarget.value as DebugPromptKind)
                 }
-                disabled={status === "streaming" || status === "building-prompt"}
+                disabled={
+                  status === "streaming" || status === "building-prompt"
+                }
               >
                 {promptOptions.map((option) => (
                   <option key={option.id} value={option.id}>
@@ -314,7 +369,9 @@ export function PromptDebugPanel() {
               <button
                 type="button"
                 onClick={() => void generatePrompt()}
-                disabled={status === "streaming" || status === "building-prompt"}
+                disabled={
+                  status === "streaming" || status === "building-prompt"
+                }
               >
                 Generate prompt
               </button>
@@ -348,32 +405,22 @@ export function PromptDebugPanel() {
             <p className="small prompt-debug-help">{activeOption.help}</p>
           </div>
 
-          {metadata ? (
+          {metadata?.actorNames?.playerName || metadata?.actorNames?.npcName ? (
             <div className="prompt-debug-metadata small">
-              {metadata.advancementCard ? (
-                <span>
-                  Advancement: <code>{metadata.advancementCard.id}</code>
-                </span>
-              ) : null}
-              {metadata.noveltyPlan ? (
-                <span>
-                  Novelty: <code>{metadata.noveltyPlan.axis}</code>
-                </span>
-              ) : null}
-              {metadata.actorNames?.playerName || metadata.actorNames?.npcName ? (
-                <span>
-                  Actors:{" "}
-                  <code>
-                    {[metadata.actorNames.playerName, metadata.actorNames.npcName]
-                      .filter(Boolean)
-                      .join(" / ")}
-                  </code>
-                </span>
-              ) : null}
+              <span>
+                Actors:{" "}
+                <code>
+                  {[metadata.actorNames.playerName, metadata.actorNames.npcName]
+                    .filter(Boolean)
+                    .join(" / ")}
+                </code>
+              </span>
             </div>
           ) : null}
 
-          {error ? <div className="workflow-message status-error">{error}</div> : null}
+          {error ? (
+            <div className="workflow-message status-error">{error}</div>
+          ) : null}
 
           <div className="prompt-debug-grid">
             <label className="prompt-debug-editor">
@@ -383,14 +430,27 @@ export function PromptDebugPanel() {
                 onChange={(event) => setPromptText(event.currentTarget.value)}
                 placeholder="Generate one of the current-scene prompts here, edit it, then send it to the LLM."
                 spellCheck={false}
-                disabled={status === "streaming" || status === "building-prompt"}
+                disabled={
+                  status === "streaming" || status === "building-prompt"
+                }
               />
             </label>
 
             <label className="prompt-debug-editor">
               <span>Streaming LLM answer</span>
-              <div className="prompt-debug-answer" aria-live="polite">
-                {displayedAnswer || "The debug answer will stream here and is not stored."}
+              <div
+                className="prompt-debug-answer"
+                aria-live="polite"
+                onMouseLeave={() => setHoveredAttribution(null)}
+              >
+                {displayedAnswer ? (
+                  <AttributedAnswerText
+                    attributions={answerAttributions}
+                    onHover={setHoveredAttribution}
+                  />
+                ) : (
+                  "The debug answer will stream here and is not stored."
+                )}
                 {status === "streaming" ? (
                   <span className="stream-caret" aria-hidden="true">
                     |
@@ -399,6 +459,15 @@ export function PromptDebugPanel() {
               </div>
             </label>
           </div>
+
+          {metadata?.agentDebugTrace ? (
+            <AgentDebugTracePanel
+              trace={metadata.agentDebugTrace}
+              activeTargetIds={activeAttributionTargetIds}
+            />
+          ) : null}
+
+          <AnswerAttributionTooltip hover={hoveredAttribution} />
         </div>
       </details>
     </section>
@@ -406,28 +475,26 @@ export function PromptDebugPanel() {
 }
 
 function metadataFromPromptBuildResult(result: {
-  advancementCard?: AdvancementCard;
-  noveltyPlan?: NoveltyPlan;
   actorNames?: RpActorNames | null;
+  debugTrace?: AgentDebugTrace;
 }): PromptDebugMetadata {
   return {
-    ...(result.advancementCard ? { advancementCard: result.advancementCard } : {}),
-    ...(result.noveltyPlan ? { noveltyPlan: result.noveltyPlan } : {}),
-    ...(result.actorNames ? { actorNames: result.actorNames } : {})
+    ...(result.actorNames ? { actorNames: result.actorNames } : {}),
+    ...(result.debugTrace ? { agentDebugTrace: result.debugTrace } : {}),
   };
 }
 
 function llmOverridesForPromptKind(
   kind: DebugPromptKind,
   configuredMaxTokens: number,
-  configuredTemperature: number
+  configuredTemperature: number,
 ): Partial<LlmGenerateRequest> {
   if (kind === "visualDescription") {
     return {
       max_tokens: Math.min(configuredMaxTokens, 64),
       temperature: Math.min(configuredTemperature, 0.35),
       stop: RP_NOVEL_STOP,
-      debug_no_log: true
+      debug_no_log: true,
     };
   }
 
@@ -435,14 +502,14 @@ function llmOverridesForPromptKind(
     return {
       max_tokens: Math.min(configuredMaxTokens, 40),
       stop: RP_DIALOGUE_STOP,
-      debug_no_log: true
+      debug_no_log: true,
     };
   }
 
   return {
     max_tokens: Math.min(configuredMaxTokens, 96),
     stop: RP_DIALOGUE_STOP,
-    debug_no_log: true
+    debug_no_log: true,
   };
 }
 

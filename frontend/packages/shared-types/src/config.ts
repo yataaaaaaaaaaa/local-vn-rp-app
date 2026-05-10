@@ -29,6 +29,27 @@ export interface StoragePaths {
   output_root: string;
 }
 
+export interface NoveltyRuntimeConfig {
+  /** 0 = steady/low novelty, 1 = balanced, 2 = high novelty. */
+  level: number;
+  /** Global strength of optional agent-driven novelty multipliers. */
+  agent_influence: number;
+  /** Strength of unordered romantic-cliche/trope facets in novelty selection. */
+  romance_cliche_influence: number;
+  /** Strength of seeded NPC personna quirks in novelty selection. */
+  npc_personna_influence: number;
+  /** Strength of sex-scene/lifetime state in novelty selection. */
+  sex_scene_influence: number;
+  /** 0 = relaxed repetition guard, 1 = default, 2 = strict anti-loop suppression. */
+  repetition_guard: number;
+  /** 0 = stabilize only, 1 = one detail, 2 = up to two compatible micro-details. */
+  detail_budget: number;
+  /** Number of hidden RP-LLM YES/NO coherence attempts before using a stabilization redirect. */
+  coherence_retries: number;
+  /** Maximum number of preselected novelty candidates offered to the hidden coherence checker. */
+  candidate_pool_size: number;
+}
+
 export interface BackendRuntimeConfig {
   config_version: 1;
   backend: {
@@ -74,6 +95,7 @@ export interface BackendRuntimeConfig {
     default_positive_prompt: string;
     default_negative_prompt: string;
   };
+  novelty: NoveltyRuntimeConfig;
   danbot: {
     backend: "danbot_nl";
     model_path: string;

@@ -27,8 +27,11 @@ function resolverTextPromptPart(resolverText: string): string {
 
   const plan = parseVisualPromptPlan(text);
 
-  if (plan.fixedTags.length > 0) {
-    return dedupeTags(plan.fixedTags).join(", ");
+  if (plan.fixedTags.length > 0 || plan.rawDanbotDescriptions.length > 0) {
+    return joinPromptParts([
+      plan.fixedTags.length > 0 ? dedupeTags(plan.fixedTags).join(", ") : "",
+      ...plan.rawDanbotDescriptions
+    ]);
   }
 
   return text;

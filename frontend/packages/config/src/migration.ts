@@ -45,6 +45,17 @@ export function migrateBackendRuntimeConfig(raw: unknown, launcher?: Partial<Bac
       default_positive_prompt: stringValue(partial.prompts?.default_positive_prompt, defaults.prompts.default_positive_prompt),
       default_negative_prompt: stringValue(partial.prompts?.default_negative_prompt, defaults.prompts.default_negative_prompt)
     },
+    novelty: {
+      level: boundedNumber(partial.novelty?.level, defaults.novelty.level, 0, 2),
+      agent_influence: boundedNumber(partial.novelty?.agent_influence, defaults.novelty.agent_influence, 0, 2),
+      romance_cliche_influence: boundedNumber(partial.novelty?.romance_cliche_influence, defaults.novelty.romance_cliche_influence, 0, 2),
+      npc_personna_influence: boundedNumber(partial.novelty?.npc_personna_influence, defaults.novelty.npc_personna_influence, 0, 2),
+      sex_scene_influence: boundedNumber(partial.novelty?.sex_scene_influence, defaults.novelty.sex_scene_influence, 0, 2),
+      repetition_guard: boundedNumber(partial.novelty?.repetition_guard, defaults.novelty.repetition_guard, 0, 2),
+      detail_budget: boundedNumber(partial.novelty?.detail_budget, defaults.novelty.detail_budget, 0, 2),
+      coherence_retries: boundedNumber(partial.novelty?.coherence_retries, defaults.novelty.coherence_retries, 0, 6),
+      candidate_pool_size: boundedNumber(partial.novelty?.candidate_pool_size, defaults.novelty.candidate_pool_size, 1, 20)
+    },
     danbot: {
       ...partial.danbot,
       max_tags: positiveNumber(partial.danbot?.max_tags, defaults.danbot.max_tags)
@@ -139,6 +150,12 @@ function optionalPositiveNumber(value: unknown, fallback: number | undefined): n
   if (value === undefined || value === null || value === "") return fallback;
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function boundedNumber(value: unknown, fallback: number, min: number, max: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
 }
 
 function isObject(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }

@@ -130,9 +130,11 @@ export async function generateUserTextStep(input: {
     {
       node: input.document,
       storyId: input.context.storyId,
-      selectedNodeId: input.context.selectedNodeId
+      selectedNodeId: input.context.selectedNodeId,
+      novelty: input.context.config.novelty
     },
-    createHiddenActorNameExtractionRunner(input.context)
+    createHiddenActorNameExtractionRunner(input.context),
+    createHiddenNoveltyCoherenceRunner(input.context)
   );
   const fullPrompt = promptResult.prompt;
   const result = await input.context.backend.generateLlm(
@@ -165,9 +167,11 @@ export async function generateDialogueStep(input: {
     {
       node: input.document,
       storyId: input.context.storyId,
-      selectedNodeId: input.context.selectedNodeId
+      selectedNodeId: input.context.selectedNodeId,
+      novelty: input.context.config.novelty
     },
-    createHiddenActorNameExtractionRunner(input.context)
+    createHiddenActorNameExtractionRunner(input.context),
+    createHiddenNoveltyCoherenceRunner(input.context)
   );
   const fullPrompt = promptResult.prompt;
   const result = await input.context.backend.generateLlm(
@@ -210,7 +214,8 @@ export async function generateVisualDescriptionStep(input: {
     {
       node: input.document,
       storyId: input.context.storyId,
-      selectedNodeId: input.context.selectedNodeId
+      selectedNodeId: input.context.selectedNodeId,
+      novelty: input.context.config.novelty
     },
     createHiddenActorNameExtractionRunner(input.context)
   );
@@ -253,6 +258,25 @@ function createHiddenActorNameExtractionRunner(
       rpNovelLlmRequestConfig(context.config, prompt, {
         max_tokens: Math.min(context.config.llm.max_tokens, 80),
         temperature: 0,
+        stop: RP_NOVEL_STOP,
+        debug_no_log: true
+      }),
+      { signal: context.abortSignal }
+    );
+
+    return result.text;
+  };
+}
+
+function createHiddenNoveltyCoherenceRunner(
+  context: StoryStepGenerationContext
+): (prompt: string) => Promise<string> {
+  return async (prompt: string): Promise<string> => {
+    const result = await context.backend.generateLlm(
+      rpNovelLlmRequestConfig(context.config, prompt, {
+        max_tokens: 4,
+        temperature: 0,
+        top_p: 1,
         stop: RP_NOVEL_STOP,
         debug_no_log: true
       }),

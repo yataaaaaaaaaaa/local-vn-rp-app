@@ -1,133 +1,276 @@
-# Local VN/RP App Scaffold
+# Local VN/RP App
 
-Windows-targeted V1 scaffold for a local visual-novel/RP app with TypeScript-owned story logic and a thin Python model backend.
+A local-first visual novel and roleplay workstation for Windows. The app combines an Electron/React frontend, a Python HTTP backend, local LLM generation, Danbooru-style visual prompt planning, image generation, replayable story trees, and story-local runtime settings.
 
-## Current architecture
+The project is designed for private local use with models and assets hosted under `D:/Anything`. It keeps story state, model choices, resolver data, prompt traces, generated images, and metadata on the local machine.
 
-- TypeScript core logic owns story graph mutation, branching, switchers, scene-to-Danbooru resolution, prompt assembly, image-mode decisions, serialization, and metadata/snapshot creation.
-- Zustand remains the intended frontend source of truth. UI/store code should call core logic instead of embedding deterministic story logic in UI components.
-- Python backend is now a Python subproject wrapper around `anything-backend-runtime` and delegates runtime ownership, queueing, generation, abort, unload, and close operations to that package.
-- Python backend does not own story state, branch decisions, switcher decisions, semantic scene resolution, Danbooru tag recipes, config persistence, or model adapter implementations.
+## Highlights
 
-## uv launch command
+- **Local roleplay loop**: user action, dialogue continuation, visible scene description, resolver text, tag selection, final image prompt, and generated image output.
+- **Replayable story tree**: branching story nodes stored through `@replayable-text-tree/core` with per-node workflow fields.
+- **Prompt stack for RP**: structured prompt sections for rules, story memory, character state, romance/intimacy context, recent conversation, novelty planning, and post-history instruction.
+- **Novelty-aware scene direction**: beat selection helps avoid repeated emotional rhythms while preserving continuity.
+- **NPC personna seeding**: if the story does not define a counterpart personality, a deterministic context-hash seed assigns a dere archetype, deeper personality dimensions, speech style, flaws, tells, and optional novelty levers.
+- **Facet-based intimacy planning**: adult-only intimacy state is represented as independent facets such as phase, position, contact, clothing, pacing, camera, privacy, and aftercare. Each facet has its own lifetime.
+- **Visual prompt planning**: visible facts are separated from narrative intent so image prompts stay anchored to observable scene details.
+- **Resolver editor**: the Danbooru resolver can be inspected and edited from the frontend.
+- **Local backend ownership**: model loading, generation, abort, unload, and shutdown flow through `anything-backend-runtime`.
+- **Traceable outputs**: generated images are paired with metadata sidecars for prompts, model settings, seed, resolver details, and provenance.
 
-From the project root:
+## Repository layout
+
+```text
+local-vn-rp-app/
+├── backend/                    Python HTTP backend and tests
+├── frontend/                   Electron + Vite + React app
+│   ├── electron/               Main/preload process code
+│   ├── packages/               Frontend application packages
+│   ├── scripts/                Dev, Electron, product-test, and static-check scripts
+│   ├── src/                    Renderer entrypoint
+│   └── tests/                  Frontend tests
+├── launcher/                   `uv run python -m launcher` entrypoint
+├── product_tests/              Opt-in local model smoke tests
+└── README.md
+```
+
+## Runtime stack
+
+```text
+Electron shell
+  -> React renderer
+  -> Zustand stores
+  -> TypeScript story/application packages
+  -> Python backend HTTP/SSE endpoints
+  -> anything-backend-runtime
+  -> local LLM, DanBotNL, and diffusion/image backends
+```
+
+The frontend owns deterministic story logic, workflow state, prompt assembly, resolver interaction, and persistence paths. The backend owns runtime calls, model lifecycle, progress events, cancellation, and local generation handoff.
+
+## Launch
+
+From the repository root:
 
 ```bat
 uv run python -m launcher
 ```
 
-The default backend launched by this command uses the Python standard library for its HTTP compatibility server and still does **not** install `fastapi`, `uvicorn`, `uvicorn[standard]`, or `colorama`. The backend subproject depends on `anything-backend-runtime` from `D:/Anything/libs/anything-backend-runtime` at tag `0.1.0`; LLM, DanbotNL, diffusion generation, queueing, abort, unload, and close behavior are delegated to that library. Llama-server process ownership now stays inside the backend runtime; the launcher no longer starts or configures a separate llama-server service.
+The launcher provides backend URL, storage roots, and output roots to Electron. It starts the backend and then starts the frontend from `frontend/`.
 
-The default frontend command starts a real Electron shell (`frontend/scripts/electron-start.mjs` -> `frontend/app/electron/main.cjs`) instead of only logging a startup message.
-
-On Windows, the launcher resolves `.cmd` shims such as `npm.cmd` before calling `subprocess.Popen`, so `uv run python -m launcher` does not fail with a raw `WinError 2` when npm is installed through Node.js. Launcher arguments are passed to npm scripts after npm's `--` separator, which prevents `npm warn Unknown cli config` messages for flags such as `--backend`. The launcher runs npm from `frontend/`, where `package.json`, `package-lock.json`, `tsconfig*.json`, scripts, app code, and packages all live. If `frontend/node_modules/electron` is missing, install frontend dependencies with:
+Install frontend packages from `frontend/` when Electron or frontend dependencies are absent:
 
 ```bat
 cd frontend
 npm install --no-audit --no-fund
 ```
 
-To run only the backend while the Electron frontend is not installed, use:
+Run only the backend:
 
 ```bat
 uv run python -m launcher --backend-only
 ```
 
-## Windows storage root
+## Local dependency paths
 
-Persisted app data is derived from the launcher-owned storage root instead of being stored inside the config file:
+The project expects these local libraries on the Windows workstation:
+
+```text
+D:/Anything/libs/anything-backend-runtime
+D:/Anything/libs/replayable-text-tree
+D:/Anything/libs/danbooru-tag-resolver
+```
+
+Model paths are selected in the app UI or through story-local settings. Typical assets live under:
+
+```text
+D:/Anything/llm/
+D:/Anything/ComfyUI/ComfyUI/models/checkpoints/
+D:/Anything/ComfyUI/ComfyUI/models/loras/
+D:/Anything/ComfyUI/ComfyUI/models/embeddings/
+```
+
+## Storage
+
+Launcher-provided roots define all local persistence:
 
 ```text
 D:/Anything/storage/local-vn-rp-app-storage/
-├── config
-│   ├── scene_library.global.json
-│   ├── switchers.global.json
-│   └── ui_state.json
-├── stories
-└── outputs
+├── config/
+│   ├── backend.runtime.json
+│   ├── frontend.layout.json
+│   └── resolver.config.json
+├── stories/
+│   └── <story_id>/
+│       ├── story.json
+│       ├── tree.json
+│       ├── zustand.story-state.json
+│       ├── nodes/
+│       ├── scene_library.story.json
+│       ├── switchers.story.json
+│       └── characters/
+└── outputs/
+    └── <story_id>/
+        ├── <image_id>.png
+        └── <image_id>.json
 ```
 
-The launcher is the source of truth for `PROJECT_NAME`, `APP_ROOT`, `STORY_ROOT`, and `OUTPUT_ROOT`. It forwards those values to both the backend and frontend through command-line arguments. The backend stores the launcher-provided values in:
-
-```text
-backend/local_vn_rp_backend/storage_paths.py
-```
-
-The TypeScript storage helpers derive paths from launcher-provided roots in:
+Storage helpers live in:
 
 ```text
 frontend/packages/config/src/storagePaths.ts
+backend/local_vn_rp_backend/storage_paths.py
 ```
 
-Runtime/model settings are story-local. Legacy shared config/root fields are ignored during migration into story settings.
-
-## Scene-to-Danbooru workflow
-
-The previous keyword-to-weighted-tag expansion workflow has been replaced by this pipeline:
+## Frontend package map
 
 ```text
-raw LLM scene prose
--> phrase spans
--> editable concept chips
--> story profile and character state
--> slot conflict resolution
--> concept tag recipes
--> seeded optional and weighted Danbooru tags
--> final prompt with provenance
--> immutable generation snapshot
+packages/backend-client        HTTP/SSE client for the Python backend
+packages/config                Defaults, persistence helpers, path helpers, character presets
+packages/shared-types          Cross-package TypeScript contracts
+packages/workflow-core         Generic workflow selectors and transitions
+packages/story-domain          Story tree types, node fields, selectors, and workflow descriptors
+packages/story-application     Generation, prompt, resolver, session, and use-case logic
+packages/story-infrastructure  Persistence implementations for story bundles and traces
+packages/stores                Zustand stores split by concern
+packages/vn-ui                 React panels, stage, tree navigator, backend config, resolver UI
 ```
 
-Implemented TypeScript entry points:
+## Story workflow
+
+Each story node moves through a visible pipeline:
 
 ```text
-compileSceneToDanbooru(...)
-createGenerationSnapshot(...)
+context
+-> user action
+-> dialogue continuation
+-> visible scene description
+-> resolver text
+-> selected tags
+-> DanBot tags
+-> positive prompt
+-> negative prompt
+-> image reference
 ```
 
-Important data objects are defined in:
+The UI exposes every step so a user can inspect, edit, regenerate, or validate a candidate before moving forward.
+
+## RP prompt pipeline
+
+The RP generator builds a modular prompt stack:
 
 ```text
-frontend/packages/shared-types/src/sceneToDanbooru.ts
+core behavior rules
+-> story and character memory
+-> NPC personna, romance, intimacy, and cliche agent state
+-> novelty beat plan
+-> recent conversation and visible state
+-> user action
+-> post-history instruction
 ```
 
-## Image generation disable policy
-
-`StoryRuntimeSettings.image.generation_policy` supports these intentional modes:
+Important files:
 
 ```text
-enabled
-  Normal behavior.
-
-disabled_before_scene_text
-  Fully disables the image workflow before the LLM scene-description step.
-
-disabled_before_backend_generation
-  Allows scene text, concept chips, recipes, and prompt preview, but skips the backend image call.
+frontend/packages/story-application/src/generation/rpNovelPrompts.ts
+frontend/packages/story-application/src/generation/rp-engine/novelty/novelty-planner.ts
+frontend/packages/story-application/src/generation/rp-engine/agents/npc-personna-agent.ts
+frontend/packages/story-application/src/generation/rp-engine/agents/sex-scene-agent.ts
+frontend/packages/story-application/src/generation/rp-engine/types.ts
 ```
 
-Core helpers:
+The novelty planner selects a beat, explains its relationship delta, anchors it in continuity, and places the actionable instruction near the end of the prompt. NPC personna, romance-cliche, and intimacy agents contribute scoped state to the planner. A single novelty arbiter chooses the primary source for the next detail delta, while every non-primary agent stays continuity-only for that turn. This keeps a clumsy personna quirk, a romantic trope, and an intimacy facet from all firing at once.
+
+Novelty orchestration is configurable from the global backend panel. The saved backend config contains scalar controls for overall novelty level, detail budget, repetition guard, global agent influence, romantic-cliche influence, NPC-personna influence, and sex-scene influence. These values let the app keep continuity steady, allow one clean micro-shift, or lean harder into one selected agent-specific novelty source.
+
+## Visual prompt pipeline
+
+The visual side keeps image prompts grounded in visible facts:
 
 ```text
-shouldGenerateImageSceneText(policy)
-shouldCallImageBackend(policy)
-imageGenerationPolicyLabel(policy)
+dialogue output and recent state
+-> compact visible scene description
+-> visual prompt planner
+-> resolver text
+-> Danbooru resolver
+-> final positive and negative prompts
+-> image backend call
 ```
 
-## Validation
+Important files:
 
-## Opt-in local product smoke test
+```text
+frontend/packages/story-application/src/generation/visualPromptPlanner.ts
+frontend/packages/story-application/src/generation/visualPromptProtocol.ts
+frontend/packages/story-application/src/generation/visualPromptTagHelpers.ts
+frontend/packages/story-application/src/generation/promptComposition.ts
+frontend/packages/story-application/src/generation/imageOutput.ts
+```
 
-A high-level product smoke test is available for the Windows machine that owns the real local models. It is intentionally skipped by default because it starts the launcher, verifies large local model files, exercises LLM/DanBotNL/diffusion generation, and writes temporary outputs.
+## Backend API shape
 
-Run it from the repository root:
+The frontend talks to the backend through JSON HTTP calls and SSE progress events. The client code lives in:
+
+```text
+frontend/packages/backend-client/src/client.ts
+```
+
+The backend server code lives in:
+
+```text
+backend/local_vn_rp_backend/simple_server.py
+backend/local_vn_rp_backend/runtime_wrapper.py
+backend/local_vn_rp_backend/events.py
+```
+
+Typical operations include runtime health, model status, model loading, generation requests, abort, unload, output metadata logging, and event streaming.
+
+## Frontend development
+
+From `frontend/`:
+
+```bat
+npm install --no-audit --no-fund
+npm run dev
+npm run electron:dev
+npm run electron:start
+```
+
+Useful quality gates:
+
+```bat
+npm run static-check
+npm run typecheck
+npm test
+npm run build
+```
+
+`npm run static-check` performs a dependency-light source audit:
+
+- TypeScript/TSX syntax pass through the TypeScript compiler API.
+- Relative import resolution across `src/`, `packages/`, `electron/`, and `tests/`.
+- `@local-vn/*` package alias target verification.
+
+`npm run typecheck`, `npm test`, and `npm run build` require frontend dependencies to be installed.
+
+## Python validation
+
+From the repository root:
+
+```bat
+uv run python -m unittest discover backend/tests
+uv run python -m compileall -q backend/local_vn_rp_backend launcher
+```
+
+## Local product smoke test
+
+The product smoke test is opt-in because it starts local services, uses large model files, performs generation, writes outputs, and shuts services down during cleanup.
 
 ```bat
 set LOCAL_VN_RP_RUN_PRODUCT_TEST=1
 python -m unittest product_tests.test_local_product_smoke
 ```
 
-The test validates these default files exist before launching anything:
+Default smoke-test assets:
 
 ```text
 D:\Anything\llm\DanbotNL-2408-260M.safetensors
@@ -137,115 +280,28 @@ D:\Anything\ComfyUI\ComfyUI\models\loras\illustrous\Dramatic Lighting Slider.saf
 D:\Anything\ComfyUI\ComfyUI\models\embeddings\il\lazyneg.safetensors
 ```
 
-The Q5 GGUF is used for smoke-test LLM generation by default. Override paths with `LOCAL_VN_RP_DANBOT_MODEL`, `LOCAL_VN_RP_LLM_MODEL_Q5`, `LOCAL_VN_RP_DIFFUSION_MODEL`, `LOCAL_VN_RP_DRAMATIC_LIGHTING_LORA`, and `LOCAL_VN_RP_LAZYNEG_EMBEDDING` when needed. Override the loaded LLM with `LOCAL_VN_RP_PRODUCT_LLM_MODEL`.
-
-The launcher supports an opt-in frontend product-test mode through `LOCAL_VN_RP_FRONTEND_MODE=product-test`. In this mode the frontend service runs a lightweight long-lived Node process that validates launcher arguments and writes `LOCAL_VN_RP_FRONTEND_READY_FILE` instead of opening Electron. The smoke test uses this mode, starts the real launcher/backend stack, lets the backend-owned runtime manage llama-server internally, waits for backend and frontend readiness, runs two story-generation steps, persists story nodes, generates tags and two-step diffusion images, verifies the generated images and metadata sidecars, and shuts the launcher down in test cleanup.
-
-```bat
-set LOCAL_VN_RP_RUN_PRODUCT_TEST=1
-python -m unittest product_tests.test_story_mechanism_product
-```
-
-Python validation uses uv and no runtime downloads:
-
-```bat
-uv run python -u scripts/run_python_tests.py
-uv run python -u scripts/check_python_annotations.py
-uv run python -u -m compileall -q backend/local_vn_rp_backend launcher scripts/check_python_annotations.py scripts/run_python_tests.py
-```
-
-TypeScript is configured with `strict`, `noUncheckedIndexedAccess`, and `exactOptionalPropertyTypes`. The scaffold keeps the deterministic resolver logic in `frontend/packages/core` and shared contracts in `frontend/packages/shared-types`.
-
-## LLM prompt workflow
-
-The frontend now uses a two-call prompt chain for each RP action:
+Override paths with:
 
 ```text
-user action + curated RP context
--> LLM dialogue continuation
--> dialogue output + curated visual state/context
--> LLM visible scene description
--> local scene-to-Danbooru resolver
+LOCAL_VN_RP_DANBOT_MODEL
+LOCAL_VN_RP_LLM_MODEL_Q5
+LOCAL_VN_RP_DIFFUSION_MODEL
+LOCAL_VN_RP_DRAMATIC_LIGHTING_LORA
+LOCAL_VN_RP_LAZYNEG_EMBEDDING
+LOCAL_VN_RP_PRODUCT_LLM_MODEL
 ```
 
-The first LLM request is explicitly scoped to dialogue/narrative continuation only. It receives story context, character voice notes, recent dialogue, the previous visual state for continuity, and the user's new action. It is instructed not to produce image prompts, Danbooru tags, JSON, LoRA syntax, or a standalone scene description.
+The frontend product-test mode uses `LOCAL_VN_RP_FRONTEND_MODE=product-test` and writes `LOCAL_VN_RP_FRONTEND_READY_FILE` after launcher arguments are verified.
 
-The second LLM request is explicitly scoped to visible scene prose only. It receives the same high-signal story/character context, the user action, recent dialogue, the previous visual state, and the exact dialogue output from the first call. It asks for one or two compact visual-cue sentences and keeps character-specific details bound to the right character. It is instructed not to write dialogue, analysis, Danbooru tags, comma-tag prompts, Stable Diffusion syntax, LoRA syntax, JSON, or markdown headings.
+## Adult-content handling
 
-Prompt builders live in:
+The app is designed for lawful adult-only private roleplay. Prompt agents track consent, boundaries, privacy, pacing, and aftercare as structured story state. The frontend prompt stack uses that state for continuity and local generation guidance; any deployment-facing content rules should sit at the product boundary that owns user input and final output review.
 
-```text
-frontend/packages/core/src/prompt.ts
-```
+## Contributor notes
 
-The Electron renderer mirrors that flow in:
-
-```text
-frontend/app/electron/renderer-flow.js
-```
-
-## Latest Electron UI additions
-
-The Electron renderer now uses a single Backend menu for model and asset selection. All values are picker-backed instead of raw freeform path entry:
-
-```text
-LLM model file -> native file picker for .gguf
-Diffusion image model file -> native file picker for .safetensors/.ckpt/.pt/.bin
-LoRA root -> native folder picker
-Embedding root -> native folder picker
-Single manual LoRA -> native file picker for .safetensors/.ckpt/.pt
-```
-
-Manual LoRAs are listed in the Backend menu, can be removed, are persisted with the story backend settings, are passed to backend asset rescans and image-model load as `manual_lora_paths`, and are appended to compiled positive prompts with prompt provenance. The manually selected file has first-found priority over same-named LoRAs discovered under the LoRA folder.
-
-Story character profiles are editable from the character roster. Use `+ Add character` to create a new profile, then edit the display name, aliases, dialogue style, base concepts, default outfit concept, LoRA tags, and whether the character is the user character. The `Visible in current scene` checkbox can force a character into the current resolver run and updates the scene board/prompt preview for that node.
-
-Each story also has editable prompt defaults:
-
-```text
-Default positive prompt
-Default negative prompt
-```
-
-These comma-separated prompt fragments are appended to every scene-to-Danbooru compilation for that story. Positive defaults appear in tag provenance as `story.prompt_defaults`; negative defaults are appended to the compiled negative prompt.
-
-The main Electron layout now uses the full window width instead of a capped centered container. Side panels are clamped to narrower responsive widths, outer padding is reduced, and the main image scene stage scales with viewport height so the scene occupies more of the screen.
-
-## V1 foundations added in this build
-
-This build adds a broader V1 foundation pass:
-
-- real lazy Diffusers/SDXL image adapter path behind `DiffusersSdxlImageAdapter`;
-- default `pyproject.toml` dependencies for PyTorch CUDA, torchvision, Diffusers, Transformers, Accelerate, SafeTensors, Pillow, and PEFT;
-- image-step progress callback plumbing from adapters into the existing SSE event stream;
-- story graph navigation controls: previous, next active branch, and branch menu;
-- backend generation-parameter UI for LLM context/GPU layers/temperature/timeouts and image width/height/steps/CFG/sampler/scheduler/policy;
-- story-local library/rules JSON editor for phrase mappings, concepts, recipes, tag blacklist, resolver limits, and exclusion rules;
-- all phrase occurrences are now detected instead of just the first matching phrase;
-- resolver guard warnings for active concepts, recipe expansion count, total tag count, and prompt length;
-- richer image inspector details for LLM prompts, resolver details, selected/rejected concepts, final tags, and config snapshot;
-- story persistence now writes story sidecars closer to the target tree, including `scene_library.story.json`, `switchers.story.json`, and `characters/*.json`.
-
-The Diffusers adapter and backend-owned llama-server adapter must be validated on the target Windows/CUDA machine with the selected SDXL/Illustrious checkpoint and GGUF model. `llama-server.exe` must be available to the backend runtime and should come from a CUDA-enabled llama.cpp build.
-
-## Backend-owned llama-server LLM runtime
-
-Story-local backend settings now include the GGUF model and generation defaults, but not the llama-server process address:
-
-```json
-{
-  "model_path": "D:/Anything/llm/Forgotten-Safeword-12B-v4.0.Q6_K.gguf",
-  "context_size": 8192,
-  "gpu_layers": "auto"
-}
-```
-
-Python backend responsibilities:
-
-- delegate LLM generation to `anything-backend-runtime`;
-- let that package create, reuse, restart, and stop its owned `llama-server` process through `llama-server-runtime`;
-- pass the model path per request and translate context/GPU-layer settings into backend-owned server args;
-- forward streamed token deltas through the existing `/events` progress flow;
-- release the owned runtime on unload, abort, shutdown, or backend close.
-
-The frontend still owns story config and sends the current story-local model/generation settings to Python. It no longer stores or sends llama-server host, port, or executable path.
+- Keep deterministic story logic in TypeScript packages rather than React components.
+- Keep backend code focused on local runtime calls and progress events.
+- Keep prompt builders modular so sections can be inspected in the Prompt Debug panel.
+- Keep generated outputs paired with metadata sidecars.
+- Keep local paths launcher-owned and story settings story-local.
+- Prefer small, testable functions for prompt planning, resolver preparation, and workflow transitions.

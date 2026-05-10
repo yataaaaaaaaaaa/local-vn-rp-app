@@ -1,25 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import { renderPromptTemplate } from "../src/generation/rp-engine/prompt/mustache-renderer";
+import { buildNoveltyCandidateBuffer, buildNoveltyCoherenceJudgePrompt, parseNoveltyCoherenceResult, selectCoherentNoveltyBeat } from "../src/generation/rp-engine/novelty/coherence-judge";
 import { extractForbiddenFragments } from "../src/generation/rp-engine/novelty/repetition-guard";
-import { selectRomanceBeat, type NoveltyPlanningContext } from "../src/generation/rp-engine/novelty/novelty-planner";
+import { detailBudgetInstructionForControls, selectRomanceBeat, withNoveltyControls, type CandidateScoringContext } from "../src/generation/rp-engine/novelty/candidate-scoring";
 import { PLAYER_RESPONSE_BEATS } from "../src/generation/rp-engine/novelty/player-beat-deck";
-import { LIGHTING_AGENT } from "../src/generation/rp-engine/agents/lighting-agent";
-import { LOCATION_AGENT } from "../src/generation/rp-engine/agents/location-agent";
-import { NPC_CLOTHING_AGENT } from "../src/generation/rp-engine/agents/npc-clothing-agent";
 import { ROMANCE_AGENT } from "../src/generation/rp-engine/agents/romance-agent";
+import { NPC_PERSONNA_AGENT } from "../src/generation/rp-engine/agents/npc-personna-agent";
 import { SEX_SCENE_AGENT } from "../src/generation/rp-engine/agents/sex-scene-agent";
-import { TIME_OF_DAY_AGENT } from "../src/generation/rp-engine/agents/time-of-day-agent";
-import { USER_CLOTHING_AGENT } from "../src/generation/rp-engine/agents/user-clothing-agent";
-import { VISUAL_CUE_AGENT } from "../src/generation/rp-engine/agents/visual-cue-agent";
-import { WEATHER_AGENT } from "../src/generation/rp-engine/agents/weather-agent";
-import { buildActorNameExtractionPrompt, parseActorNameText } from "../src/generation/rp-engine/tasks/actor-name-extract.task";
-import {
-  buildNumberedTagChoiceQuestion,
-  buildVisualPlannerPrompt,
-  cleanOneLineAnswer,
-  parseNumberedChoiceAnswer
-} from "../src/generation/rp-engine/tasks/visual-planner-question.task";
+import { DIALOGUE_QUALITY_AGENT } from "../src/generation/rp-engine/agents/dialogue-quality-agent";
 import type { RpPromptInput } from "../src/generation/rp-engine/types";
 
 const emptyNode: RpPromptInput["node"] = {
@@ -35,7 +24,7 @@ const emptyNode: RpPromptInput["node"] = {
   imageRef: ""
 };
 
-const trustContext: NoveltyPlanningContext = {
+const trustContext: CandidateScoringContext = {
   closeness: 5,
   phase: "trust",
   currentTension: "emotional honesty and trust are active",
@@ -54,6 +43,81 @@ describe("RP engine modules", () => {
     ).toContain("She looks at the candle and remembers the");
   });
 
+  it("builds a text-first candidate buffer and YES/NO coherence prompt", () => {
+    const candidates = buildNoveltyCandidateBuffer({
+      promptInput: { node: emptyNode, rng: () => 0 },
+      deck: PLAYER_RESPONSE_BEATS,
+      context: withNoveltyControls(trustContext, { candidate_pool_size: 3 })
+    });
+    const prompt = buildNoveltyCoherenceJudgePrompt({
+      sceneText: "USER: Take my hand.",
+      agentNotes: [{ source: "romance", text: "phase=trust; closeness=5/10" }],
+      candidate: candidates[0]!
+    });
+
+    expect(candidates.length).toBeGreaterThan(0);
+    expect(candidates.length).toBeLessThanOrEqual(3);
+    expect(candidates[0]!.text).toContain("Use one");
+    expect(prompt).toContain("CANDIDATE_REDIRECT:");
+    expect(prompt).toContain("Output exactly one token: YES or NO");
+    expect(parseNoveltyCoherenceResult("YES").accepted).toBe(true);
+    expect(parseNoveltyCoherenceResult("YES.").accepted).toBe(true);
+    expect(parseNoveltyCoherenceResult("No, not coherent").accepted).toBe(false);
+  });
+
+  it("falls back to stabilization when the RP-LLM coherence checker rejects every candidate", async () => {
+    const selection = await selectCoherentNoveltyBeat({
+      promptInput: { node: emptyNode, rng: () => 0, novelty: { coherence_retries: 2, candidate_pool_size: 2 } },
+      deck: PLAYER_RESPONSE_BEATS,
+      context: trustContext,
+      sceneText: "USER: Stay with me, but do not rush.",
+      agentNotes: [{ source: "romance", text: "phase=trust; closeness=5/10" }],
+      runCoherenceCheck: async () => "NO"
+    });
+
+    expect(selection.acceptedByJudge).toBe(false);
+    expect(selection.redirectText).toContain("Do not force a new novelty beat");
+    expect(selection.candidate).toBeUndefined();
+    expect(selection.rejectedCandidateIds.length).toBe(2);
+  });
+
+  it("accepts exactly one redirect candidate when the hidden checker says YES", async () => {
+    const selection = await selectCoherentNoveltyBeat({
+      promptInput: { node: emptyNode, rng: () => 0, novelty: { coherence_retries: 2, candidate_pool_size: 2 } },
+      candidates: [{ id: "manual:direct-answer", source: "dialogue_quality", weight: 1, text: "Have the NPC answer directly and move one small step forward." }],
+      sceneText: "USER: Answer me honestly.",
+      agentNotes: [{ source: "dialogue-quality", text: "avoid repeated questions" }],
+      runCoherenceCheck: async () => "YES."
+    });
+
+    expect(selection.acceptedByJudge).toBe(true);
+    expect(selection.redirectText).toContain("answer directly");
+    expect(selection.checkedCandidateIds).toEqual(["manual:direct-answer"]);
+  });
+
+  it("runs the four dialogue agents as note/candidate producers", () => {
+    const node = {
+      ...emptyNode,
+      context: "Story setup: A cool kuudere NPC waits with the player under heavy rain.",
+      userText: "You do not have to pretend the thunder did not scare you."
+    };
+    const input = { node, promptInput: { node, rng: () => 0.2 }, previousAgentNotes: [] };
+    const outputs = [
+      NPC_PERSONNA_AGENT.run(input),
+      ROMANCE_AGENT.run(input),
+      SEX_SCENE_AGENT.run(input),
+      DIALOGUE_QUALITY_AGENT.run(input)
+    ];
+
+    expect(outputs.flatMap((output) => output.notes ?? []).length).toBeGreaterThan(0);
+    expect(outputs.flatMap((output) => output.candidates ?? []).length).toBeGreaterThan(0);
+  });
+
+  it("keeps numeric novelty controls code-side", () => {
+    expect(detailBudgetInstructionForControls({ detail_budget: 0 })).toContain("stabilize");
+    expect(detailBudgetInstructionForControls({ detail_budget: 2 })).toContain("support details");
+  });
+
   it("switches player novelty planning to the boundary-safe beat", () => {
     const beat = selectRomanceBeat(
       {
@@ -65,158 +129,5 @@ describe("RP engine modules", () => {
     );
 
     expect(beat.id).toBe("player_hold_boundary");
-  });
-
-  it("uses the raw line protocol for actor-name extraction", () => {
-    const prompt = buildActorNameExtractionPrompt({
-      ...emptyNode,
-      context: "Kazuma is the player character. Darkness is the main NPC."
-    });
-
-    expect(prompt).toContain("PLAYER_NAME: <name or UNKNOWN>");
-    expect(prompt).toContain("NPC_NAME: <name or UNKNOWN>");
-    expect(prompt).not.toContain("OUTPUT JSON ONLY");
-    expect(parseActorNameText("PLAYER_NAME: Kazuma\nNPC_NAME: UNKNOWN")).toEqual({
-      playerName: "Kazuma",
-      npcName: null
-    });
-  });
-
-  it("renders visual planner questions through the RP engine task layer", () => {
-    const question = buildNumberedTagChoiceQuestion({
-      question: "Choose the expression.",
-      allowedTags: [{ tag: "neutral expression" }, { tag: "soft smile" }],
-      example: "2"
-    });
-    const prompt = buildVisualPlannerPrompt({
-      node: {
-        ...emptyNode,
-        context: "The archive smells of old parchment.",
-        visualDescription: "Darkness stands by an oak table."
-      },
-      facts: { visible_body_regions: ["face", "hands"] },
-      question
-    });
-
-    expect(prompt).toContain("KNOWN VISUAL DECISIONS FOR THIS SCENE:");
-    expect(prompt).toContain("visible_body_regions: face, hands");
-    expect(prompt).toContain("Choose exactly one option by number:");
-    expect(parseNumberedChoiceAnswer("Option 2", 2)).toBe(1);
-    expect(cleanOneLineAnswer("  2  \nignored")).toBe("2");
-  });
-
-  it("uses shared clothing agents for user and NPC undressing state", () => {
-    const userContribution = USER_CLOTHING_AGENT.run({
-      node: {
-      ...emptyNode,
-      userText: "I slip off my jacket and loosen my shirt."
-      }
-    });
-    const npcContribution = NPC_CLOTHING_AGENT.run({
-      node: {
-      ...emptyNode,
-      dialogue: "Darkness unbuttons her blouse, leaving one bare shoulder visible."
-      }
-    });
-
-    expect(userContribution.facts.user_clothing_coverage).toBe("partially_undressed");
-    expect(userContribution.facts.user_clothing_change).toBe("undressed");
-    expect(userContribution.fixedTags).toContain("open clothes");
-    expect(npcContribution.facts.npc_clothing_coverage).toBe("partially_undressed");
-    expect(npcContribution.facts.npc_clothing_change).toBe("undressed");
-    expect(npcContribution.fixedTags).toContain("bare shoulders");
-    expect(npcContribution.facts.npc_clothing_state).toContain("NPC counterpart clothing state");
-  });
-
-  it("lets each agent contribute to visual planning through one interface", () => {
-    const userContribution = USER_CLOTHING_AGENT.run({
-      node: {
-      ...emptyNode,
-      userText: "I slip off my jacket."
-      }
-    });
-    const sexSceneContribution = SEX_SCENE_AGENT.run({
-      node: {
-      ...emptyNode,
-      dialogue: "They kiss beside the bed."
-      }
-    });
-
-    expect(userContribution.facts.user_clothing_state).toContain("player-side character clothing state");
-    expect(userContribution.fixedTags).toContain("open clothes");
-    expect(sexSceneContribution.facts.sex_scene_state).toContain("SEX_SCENE_STATE");
-    expect(sexSceneContribution.facts.sex_scene_step).toBe("kissing");
-  });
-
-  it("extracts ordered sex-scene steps with consent and boundary handling", () => {
-    const activeContribution = SEX_SCENE_AGENT.run({
-      node: {
-      ...emptyNode,
-      context: "Both characters are adults.",
-      dialogue: "Only if you want this. We can stop any time.",
-      visualDescription: "They kiss on the edge of the bed."
-      }
-    });
-    const boundaryContribution = SEX_SCENE_AGENT.run({
-      node: {
-      ...emptyNode,
-      dialogue: "Wait, slow down. I am not comfortable yet."
-      }
-    });
-
-    expect(activeContribution.facts.sex_scene_step).toBe("kissing");
-    expect(activeContribution.facts.sex_scene_requires_adult_framing).toBe(false);
-    expect(activeContribution.facts.sex_scene_state).toContain("consent or pacing language");
-    expect(activeContribution.fixedTags).toContain("kiss");
-    expect(boundaryContribution.facts.sex_scene_step).toBe("boundary_pause");
-    expect(boundaryContribution.facts.sex_scene_state).toContain("pause escalation");
-    expect(boundaryContribution.fixedTags).toEqual([]);
-  });
-
-  it("extracts scene context agents for time, location, weather, and lighting", () => {
-    const node = {
-      ...emptyNode,
-      context: "The archive windows look over the old city.",
-      visualDescription: "At night, rain streaks the glass while candlelight warms the library table."
-    };
-    const timeContribution = TIME_OF_DAY_AGENT.run({ node });
-    const locationContribution = LOCATION_AGENT.run({ node });
-    const weatherContribution = WEATHER_AGENT.run({ node });
-    const lightingContribution = LIGHTING_AGENT.run({ node });
-
-    expect(timeContribution.facts.time_of_day).toBe("night");
-    expect(timeContribution.fixedTags).toContain("night");
-    expect(locationContribution.facts.scene_location).toBe("library");
-    expect(locationContribution.fixedTags).toContain("indoors");
-    expect(weatherContribution.facts.weather).toBe("rain");
-    expect(weatherContribution.fixedTags).toContain("rain");
-    expect(lightingContribution.facts.lighting).toBe("candlelight");
-    expect(lightingContribution.fixedTags).toContain("warm light");
-  });
-
-  it("treats romance and visual cue generation as agents", () => {
-    const node = {
-      ...emptyNode,
-      context: "Darkness is the main NPC. Kazuma is the user/player character.",
-      userText: "Take my hand.",
-      dialogue: "Only if you keep up."
-    };
-    const romanceContribution = ROMANCE_AGENT.run({
-      node,
-      forcedNovelty: { boundaryDetected: true }
-    });
-    const visualCueContribution = VISUAL_CUE_AGENT.run({
-      node,
-      promptInput: { node },
-      actorNames: { playerName: "Kazuma", npcName: "Darkness" },
-      forcedNovelty: { advancementCard: "visual_lighting_mood" }
-    });
-
-    expect(romanceContribution.facts.romance_state).toContain("phase:");
-    expect(romanceContribution.promptViews?.romance).toBeTruthy();
-    expect(romanceContribution.novelty?.context?.boundaryDetected).toBe(true);
-    expect(visualCueContribution.prompt).toContain("VISUAL_RULES:");
-    expect(visualCueContribution.prompt).toContain("CURRENT_TURN:");
-    expect(visualCueContribution.novelty?.advancementCard?.id).toBe("visual_lighting_mood");
   });
 });

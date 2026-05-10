@@ -1,20 +1,25 @@
-# Local AI Visual Novel Frontend Implementation
+# Frontend Implementation Guide
 
-This frontend implements the corrected architecture:
+The frontend is an Electron, Vite, React, and TypeScript application for local visual novel and roleplay generation. It owns the interactive story workflow, prompt assembly, resolver UI, tree navigation, frontend persistence, and backend client calls.
 
-- Electron owns launcher argument ingestion and filesystem IPC.
-- React renders a vertically stacked visual novel UI.
-- Zustand stores are split by concern.
-- `@replayable-text-tree/core` owns the replayable story tree.
-- `danbooru-tag-resolver` is embedded as the resolver editor UI.
-- Backend access is isolated in `packages/backend-client`.
-- Backend configuration is separate from story/tree/leaf state.
-- Story state is persisted under launcher-provided `story_root`.
-- Generated image references are stored on tree nodes and image files are written under `output_root`.
+## Process split
 
-## Expected launcher command
+```text
+Electron main process
+  -> receives launcher arguments
+  -> exposes filesystem and native dialog IPC
+  -> starts the renderer
 
-The existing `cli.py` starts Electron with:
+React renderer
+  -> renders the visual novel stage and panels
+  -> reads and writes Zustand stores
+  -> calls story/application use cases
+  -> sends runtime requests through the backend client
+```
+
+## Launcher arguments
+
+The launcher provides:
 
 ```text
 --backend
@@ -25,44 +30,61 @@ The existing `cli.py` starts Electron with:
 --output-root
 ```
 
-The Electron main process parses these arguments, validates file accesses against the launcher-provided storage roots, and exposes a preload bridge:
+The preload bridge exposes:
 
 ```ts
 window.launcher.getArgs();
-window.appPersistence.readJson /
-  writeJson /
-  readText /
-  writeText /
-  exists /
-  remove /
-  ensureDir /
-  showItem;
+window.appPersistence.readJson(...);
+window.appPersistence.writeJson(...);
+window.appPersistence.readText(...);
+window.appPersistence.writeText(...);
+window.appPersistence.exists(...);
+window.appPersistence.remove(...);
+window.appPersistence.ensureDir(...);
+window.appPersistence.showItem(...);
+window.nativeDialogs.pickFile(...);
+window.nativeDialogs.pickFiles(...);
+window.nativeDialogs.pickFolder(...);
 ```
 
-## Storage layout used
+## Package roles
 
 ```text
-<app_root>/config/backend.runtime.json
-<app_root>/config/frontend.layout.json
-<app_root>/config/resolver.config.json
-<story_root>/<story_id>/story.json
-<story_root>/<story_id>/tree.json
-<story_root>/<story_id>/zustand.story-state.json
-<story_root>/<story_id>/nodes/<node_id>.json
-<output_root>/<story_id>/<image_id>.png
-<output_root>/<story_id>/<image_id>.json
+packages/backend-client        Backend HTTP/SSE access
+packages/config                Defaults, storage helpers, persistence helpers, presets
+packages/shared-types          Shared runtime, story, generation, and config types
+packages/workflow-core         Generic workflow state primitives
+packages/story-domain          Story node fields, workflow descriptors, tree utilities
+packages/story-application     Use cases, generation, prompt stacks, resolver orchestration
+packages/story-infrastructure  Story and trace persistence adapters
+packages/stores                Zustand stores split by concern
+packages/vn-ui                 React UI components and panels
 ```
 
-## Main packages
+## Story screen flow
 
 ```text
-packages/backend-client   Thin HTTP/SSE client only
-packages/config           Defaults, migration, storage path helpers, persistence interfaces
-packages/shared-types     Cross-package runtime/story/config types
-packages/stores           Zustand stores split by concern
-packages/vn-ui            React UI panels
+story tree navigator
+-> workflow tabs
+-> generation/debug panels
+-> visual novel stage
+-> backend configuration panel
+-> Danbooru resolver panel
 ```
 
-## Notes
+The renderer keeps generation steps explicit so each node can be inspected at the level of user action, dialogue, visual cue, resolver text, selected tags, final prompt, and generated image.
 
-The command palette includes a guarded `deleteCurrentLeaf` action, but it intentionally does not mutate replayable-tree internals because the minimal README for `@replayable-text-tree/core` does not expose a deletion primitive. Once the library exposes a public delete API, wire that action there.
+The backend configuration panel also owns global novelty orchestration controls. These values are stored in the Zustand-backed runtime config and drive the prompt planner's novelty level, detail budget, repetition guard, per-agent influence, candidate pool size, and hidden RP-LLM coherence retry count. The RP prompt path runs the configured agents in sequence, appends their compact notes, appends their redirect candidates to a shared buffer, and asks the RP LLM a YES/NO coherence question for one sampled candidate at a time. The final prompt receives only the accepted `TURN_REDIRECT`, or a stabilization redirect when the sampled candidates fail.
+
+## Static checks
+
+From `frontend/`:
+
+```bat
+npm run static-check
+npm run typecheck
+npm test
+npm run build
+```
+
+`npm run static-check` verifies TypeScript syntax, relative imports, and package alias targets. The other commands require installed frontend dependencies.

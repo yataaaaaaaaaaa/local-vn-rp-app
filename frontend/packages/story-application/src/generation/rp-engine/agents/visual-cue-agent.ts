@@ -1,4 +1,4 @@
-import type { NoveltyPlanningContext } from "../novelty/novelty-planner";
+import { withNoveltyControls, type CandidateScoringContext } from "../novelty/candidate-scoring";
 import { renderPromptTemplate } from "../prompt/mustache-renderer";
 import { resolvedActorLabels, sentenceStart } from "../state/actor-state";
 import {
@@ -6,9 +6,9 @@ import {
   lastVisualCueFromContext,
   storySetupFromContext
 } from "../state/story-context";
-import type { AdvancementCard, BeatType, NoveltyAxis, NoveltyPlan, RpPromptRenderInput } from "../types";
-import { forcedForbiddenFragments, promptInputFromAgentRun } from "./agent-run-helpers";
-import { noveltyPlanForRomanceBeat, ROMANCE_AGENT, selectVisualRomanceAdvancement } from "./romance-agent";
+import type { AdvancementCard, BeatType, RpPromptRenderInput } from "../types";
+import { promptInputFromAgentRun } from "./agent-run-helpers";
+import { ROMANCE_AGENT, selectVisualRomanceAdvancement } from "./romance-agent";
 import type { RpAgent } from "./types";
 
 type VisualPromptTemplateData = {
@@ -43,12 +43,6 @@ type VisualPromptTemplateData = {
     typicalAfter: number;
     tags: string;
   };
-  novelty: {
-    axis: NoveltyAxis;
-    directive: string;
-    hasForbiddenFragments: boolean;
-    forbiddenFragmentsBlock: string;
-  };
   antiPatterns: Array<{ text: string }>;
 };
 
@@ -66,12 +60,14 @@ export const VISUAL_CUE_AGENT: RpAgent = {
       forcedNovelty: input.forcedNovelty
     });
     const romance = romancePromptViewFromContribution(romanceContribution);
-    const noveltyContext = romanceContribution.novelty?.context!;
+    const noveltyContext = withNoveltyControls(
+      romanceContribution.novelty?.context!,
+      renderInput.novelty
+    );
     const advancementCard = selectVisualRomanceAdvancement(renderInput, noveltyContext);
-    const noveltyPlan = noveltyPlanForRomanceBeat(advancementCard, noveltyContext, forcedForbiddenFragments(input));
     const prompt = renderPromptTemplate(
       layoutVisualRepresentationPromptTemplate(),
-      buildVisualPromptTemplateData(renderInput, romance, noveltyContext, advancementCard, noveltyPlan)
+      buildVisualPromptTemplateData(renderInput, romance, noveltyContext, advancementCard)
     );
 
     return {
@@ -82,9 +78,7 @@ export const VISUAL_CUE_AGENT: RpAgent = {
         romance
       },
       novelty: {
-        context: noveltyContext,
-        advancementCard,
-        noveltyPlan
+        context: noveltyContext
       }
     };
   }
@@ -93,9 +87,8 @@ export const VISUAL_CUE_AGENT: RpAgent = {
 function buildVisualPromptTemplateData(
   input: RpPromptRenderInput,
   romance: Record<string, unknown>,
-  noveltyContext: NoveltyPlanningContext,
-  selectedBeat: AdvancementCard,
-  selectedNoveltyPlan: NoveltyPlan
+  noveltyContext: CandidateScoringContext,
+  selectedBeat: AdvancementCard
 ): VisualPromptTemplateData {
   const labels = resolvedActorLabels(input.actorNames ?? null);
 
@@ -130,12 +123,6 @@ function buildVisualPromptTemplateData(
       minCloseness: selectedBeat.minCloseness ?? 0,
       typicalAfter: selectedBeat.typicalAfter ?? noveltyContext.closeness,
       tags: selectedBeat.tags?.join(", ") ?? "romance"
-    },
-    novelty: {
-      axis: selectedNoveltyPlan.axis,
-      directive: selectedNoveltyPlan.directive,
-      hasForbiddenFragments: selectedNoveltyPlan.forbiddenFragments.length > 0,
-      forbiddenFragmentsBlock: selectedNoveltyPlan.forbiddenFragments.map((fragment) => "  - " + fragment).join("\n")
     },
     antiPatterns: []
   };
@@ -172,7 +159,7 @@ function layoutVisualRepresentationPromptTemplate(): string {
     "",
     romancePromptViewBlockTemplate(),
     "",
-    selectedBeatBlockTemplate(),
+    visualRedirectGuideBlockTemplate(),
     "",
     "FINAL TASK:",
     "Write the literal VISUAL_CUE only. Represent the current romance beat visually without inventing new plot.",
@@ -233,15 +220,14 @@ function romancePromptViewBlockTemplate(): string {
   ].join("\n");
 }
 
-function selectedBeatBlockTemplate(): string {
+function visualRedirectGuideBlockTemplate(): string {
   return [
-    "THIS_TURN_ROMANCE_BEAT:",
-    "- Beat: {{beat.label}}.",
-    "- Minimum closeness: {{beat.minCloseness}}. Typical after: {{beat.typicalAfter}}.",
+    "VISUAL_REDIRECT_GUIDE:",
+    "- Guide: {{beat.label}}.",
     "- Tags: {{beat.tags}}.",
     "- Direction: {{beat.directive}}",
     "- Constraint: {{beat.constraint}}",
     "- Avoid: {{beat.avoid}}",
-    "- Apply exactly one major romance beat."
+    "- Render this as visible composition only; do not invent new story action."
   ].join("\n");
 }

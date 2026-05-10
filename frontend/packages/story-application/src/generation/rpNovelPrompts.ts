@@ -3,15 +3,25 @@ import { cleanUserTextOutput } from "./rp-engine/cleaning/clean-user-text";
 import { cleanVisualDescriptionOutput } from "./rp-engine/cleaning/clean-visual";
 import { renderPromptTemplate } from "./rp-engine/prompt/mustache-renderer";
 import { extractForbiddenFragments } from "./rp-engine/novelty/repetition-guard";
-import { noveltyPlanFromBeat, selectRomanceBeat } from "./rp-engine/novelty/novelty-planner";
-import { PLAYER_RESPONSE_BEATS } from "./rp-engine/novelty/player-beat-deck";
+import { detailBudgetInstructionForControls, noveltyControlSummary, withNoveltyControls } from "./rp-engine/novelty/candidate-scoring";
+import {
+  buildNoveltyCandidateBuffer,
+  noveltySelectionSummary,
+  selectCoherentNoveltyBeat,
+  type CoherentNoveltySelection,
+  type NoveltyAgentNote,
+  type NoveltyCoherenceRunner
+} from "./rp-engine/novelty/coherence-judge";
 import { RP_DIALOGUE_STOP, RP_NOVEL_STOP } from "./rp-engine/runtime/stop-sequences";
 import { stableHash } from "./rp-engine/runtime/cache-store";
 import { applyForcedNoveltyToPromptInput } from "./rp-engine/agents/agent-run-helpers";
-import { getRomanceBeat, ROMANCE_AGENT, selectRomanceAdvancement } from "./rp-engine/agents/romance-agent";
+import { playerResponseAdvancementDeck, romanceAdvancementDeck, ROMANCE_AGENT } from "./rp-engine/agents/romance-agent";
+import { NPC_PERSONNA_AGENT } from "./rp-engine/agents/npc-personna-agent";
 import { VISUAL_CUE_AGENT } from "./rp-engine/agents/visual-cue-agent";
-import type { AgentRunInput } from "./rp-engine/agents/types";
-import { normalizeActorNames, resolvedActorLabels, sentenceStart } from "./rp-engine/state/actor-state";
+import { SEX_SCENE_AGENT } from "./rp-engine/agents/sex-scene-agent";
+import { DIALOGUE_QUALITY_AGENT } from "./rp-engine/agents/dialogue-quality-agent";
+import type { AgentContribution, AgentNoveltyCandidate, AgentRunInput, RpAgent } from "./rp-engine/agents/types";
+import { normalizeActorNames, resolvedActorLabels } from "./rp-engine/state/actor-state";
 import { buildActorNameExtractionPrompt, parseActorNameExtractionOutput } from "./rp-engine/tasks/actor-name-extract.task";
 import {
   compactStoryContext,
@@ -25,9 +35,9 @@ import {
 import type {
   ActorNameExtractionRunner,
   AdvancementCard,
+  AgentDebugTrace,
   BeatType,
-  NoveltyAxis,
-  NoveltyPlan,
+  CandidateDebugEntry,
   RomancePhase,
   RpActorNames,
   RpPromptBuildResult,
@@ -40,9 +50,9 @@ export { cleanDialogueOutput, cleanUserTextOutput, cleanVisualDescriptionOutput 
 export type {
   ActorNameExtractionRunner,
   AdvancementCard,
+  AgentDebugTrace,
   BeatType,
-  NoveltyAxis,
-  NoveltyPlan,
+  CandidateDebugEntry,
   RomancePhase,
   RpActorNames,
   RpPromptBuildResult,
@@ -91,6 +101,9 @@ type PromptTemplateData = {
   node: {
     storyContext: string;
     storySetup: string;
+    promptMemory: string;
+    worldInfoBefore: string;
+    worldInfoAfter: string;
     fullExchange: string;
     latestPreviousTurn: string;
     recentOutputToAvoid: string;
@@ -99,21 +112,15 @@ type PromptTemplateData = {
     dialogue: string;
   };
   romance: Record<string, unknown>;
-  beat: {
-    id: BeatType;
-    label: string;
-    directive: string;
-    constraint: string;
-    avoid: string;
-    minCloseness: number;
-    typicalAfter: number;
-    tags: string;
-  };
+  npcPersonna: Record<string, unknown>;
+  sexScene: Record<string, unknown>;
+  agentNotes: Array<{ source: string; text: string }>;
   novelty: {
-    axis: NoveltyAxis;
-    directive: string;
-    hasForbiddenFragments: boolean;
-    forbiddenFragmentsBlock: string;
+    freshnessRule: string;
+    noveltyControlSummary: string;
+    detailBudgetInstruction: string;
+    turnRedirect: string;
+    coherenceSummary: string;
   };
   antiPatterns: Array<{ text: string }>;
 };
@@ -126,23 +133,173 @@ function forcedNoveltyFromPromptInput(input: RpPromptInput): AgentRunInput["forc
   };
 }
 
-function buildPromptTemplateData(
-  input: RpPromptRenderInput,
-  beat?: AdvancementCard,
-  noveltyPlan?: NoveltyPlan
-): PromptTemplateData {
-  const labels = resolvedActorLabels(input.actorNames ?? null);
+type PromptGenerationAgentPass = {
+  agentIds: string[];
+  contributions: AgentContribution[];
+  notes: NoveltyAgentNote[];
+  candidates: AgentNoveltyCandidate[];
+  romance: Record<string, unknown>;
+  npcPersonna: Record<string, unknown>;
+  sexScene: Record<string, unknown>;
+  noveltyContext: ReturnType<typeof withNoveltyControls>;
+};
+
+function runPromptGenerationAgents(input: RpPromptRenderInput): PromptGenerationAgentPass {
   const forcedNovelty = forcedNoveltyFromPromptInput(input);
   const promptInput = applyForcedNoveltyToPromptInput(input, forcedNovelty);
-  const romanceContribution = ROMANCE_AGENT.run({
-    node: promptInput.node,
+  const agents: RpAgent[] = [NPC_PERSONNA_AGENT, ROMANCE_AGENT, SEX_SCENE_AGENT, DIALOGUE_QUALITY_AGENT];
+  const notes: NoveltyAgentNote[] = [];
+  const candidates: AgentNoveltyCandidate[] = [];
+  const contributions: AgentContribution[] = [];
+
+  for (const agent of agents) {
+    const contribution = agent.run({
+      node: promptInput.node,
+      promptInput,
+      actorNames: input.actorNames ?? null,
+      forcedNovelty,
+      previousAgentNotes: notes
+    });
+
+    contributions.push(contribution);
+    notes.push(...(contribution.notes ?? []));
+    candidates.push(...(contribution.candidates ?? []));
+  }
+
+  const npcPersonnaContribution = contributions.find((contribution) => contribution.promptViews?.npcPersonna);
+  const romanceContribution = contributions.find((contribution) => contribution.promptViews?.romance);
+  const sexSceneContribution = contributions.find((contribution) => contribution.promptViews?.sexScene);
+  const romanceContext = romanceContribution?.novelty?.context ?? ROMANCE_AGENT.run({ node: promptInput.node, promptInput, forcedNovelty }).novelty?.context!;
+  const noveltyContext = withNoveltyControls({
+    ...romanceContext,
+    sexScene: sexSceneContribution?.novelty?.intimacy,
+    npcPersonna: npcPersonnaContribution?.novelty?.npcPersonna,
+    boundaryDetected: Boolean(romanceContext.boundaryDetected || sexSceneContribution?.novelty?.intimacy?.boundaryDetected)
+  }, promptInput.novelty);
+
+  return {
+    agentIds: agents.map((agent) => agent.id),
+    contributions,
+    notes,
+    candidates,
+    npcPersonna: npcPersonnaContribution ? npcPersonnaPromptViewFromContribution(npcPersonnaContribution) : {},
+    romance: romanceContribution ? romancePromptViewFromContribution(romanceContribution) : {},
+    sexScene: sexSceneContribution ? sexScenePromptViewFromContribution(sexSceneContribution) : {},
+    noveltyContext
+  };
+}
+
+type CoherentRedirectLoopResult = {
+  promptInput: RpPromptRenderInput;
+  agentPass: PromptGenerationAgentPass;
+  candidates: AgentNoveltyCandidate[];
+  noveltySelection: CoherentNoveltySelection;
+  debugTrace: AgentDebugTrace;
+};
+
+async function runCoherentRedirectPromptLoop(
+  input: RpPromptRenderInput,
+  deck: AdvancementCard[],
+  runHiddenNoveltyCoherence?: NoveltyCoherenceRunner
+): Promise<CoherentRedirectLoopResult> {
+  const forcedNovelty = forcedNoveltyFromPromptInput(input);
+  const promptInput = applyForcedNoveltyToPromptInput(input, forcedNovelty);
+  const agentPass = runPromptGenerationAgents(promptInput);
+  const candidates = buildNoveltyCandidateBuffer({
     promptInput,
-    forcedNovelty
+    deck,
+    context: agentPass.noveltyContext,
+    agentCandidates: agentPass.candidates
   });
-  const romance = romancePromptViewFromContribution(romanceContribution);
-  const noveltyContext = romanceContribution.novelty?.context!;
-  const selectedBeat = beat ?? getRomanceBeat("callback_intimacy");
-  const selectedNoveltyPlan = noveltyPlan ?? noveltyPlanFromBeat(selectedBeat, noveltyContext, []);
+  const noveltySelection = await selectCoherentNoveltyBeat({
+    promptInput,
+    sceneText: noveltySceneTextFromInput(promptInput),
+    agentNotes: agentPass.notes,
+    candidates,
+    runCoherenceCheck: runHiddenNoveltyCoherence
+  });
+  return {
+    promptInput,
+    agentPass,
+    candidates,
+    noveltySelection,
+    debugTrace: buildAgentDebugTrace(promptInput, agentPass, candidates, noveltySelection)
+  };
+}
+
+function buildAgentDebugTrace(
+  input: RpPromptRenderInput,
+  agentPass: PromptGenerationAgentPass,
+  candidateBuffer: AgentNoveltyCandidate[],
+  noveltySelection: CoherentNoveltySelection
+): AgentDebugTrace {
+  const agents = agentPass.contributions.map((contribution, index) => {
+    const id = agentPass.agentIds[index] ?? contribution.notes?.[0]?.source ?? `agent-${index + 1}`;
+    return {
+      id,
+      label: agentLabel(id),
+      notes: (contribution.notes ?? []).map((note) => note.text),
+      candidates: (contribution.candidates ?? []).map(candidateDebugEntry)
+    };
+  });
+
+  return {
+    sceneId: [input.storyId ?? "unknown-story", input.selectedNodeId ?? stableHash(input.node.context || "empty")].join(":"),
+    generatedAt: new Date().toISOString(),
+    agents,
+    candidateBuffer: candidateBuffer.map(candidateDebugEntry),
+    coherenceChecks: noveltySelection.coherenceChecks ?? [],
+    selectedRedirect: {
+      candidateId: noveltySelection.candidate?.id,
+      source: noveltySelection.candidate?.source,
+      text: noveltySelection.redirectText,
+      fallback: !noveltySelection.acceptedByJudge,
+      reason: selectedRedirectReason(noveltySelection)
+    }
+  };
+}
+
+function candidateDebugEntry(candidate: AgentNoveltyCandidate): CandidateDebugEntry {
+  return {
+    id: candidate.id,
+    source: candidate.source,
+    text: candidate.text,
+    weight: Number.isFinite(candidate.weight) ? candidate.weight : undefined,
+    label: candidate.label
+  };
+}
+
+function selectedRedirectReason(selection: CoherentNoveltySelection): AgentDebugTrace["selectedRedirect"]["reason"] {
+  if (selection.acceptedByJudge) return "accepted";
+  const reason = (selection.fallbackReason ?? "").toLowerCase();
+  if (reason.includes("no agent") || reason.includes("no candidates")) return "no_candidates";
+  if (reason.includes("failed") || reason.includes("error")) return "checker_error";
+  if (reason.includes("disabled") || reason.includes("no hidden")) return "disabled";
+  return "all_rejected";
+}
+
+function agentLabel(id: string): string {
+  switch (id) {
+    case "npc-personna":
+      return "NPC Personna Agent";
+    case "romance":
+      return "Romance Agent";
+    case "sex-scene":
+      return "Sex Scene Agent";
+    case "dialogue-quality":
+      return "Dialogue Quality Agent";
+    default:
+      return id.replace(/[-_]/g, " ");
+  }
+}
+
+function buildPromptTemplateData(
+  input: RpPromptRenderInput,
+  agentPass: PromptGenerationAgentPass,
+  noveltySelection?: CoherentNoveltySelection | null
+): PromptTemplateData {
+  const labels = resolvedActorLabels(input.actorNames ?? null);
+  const forbiddenFragments = extractForbiddenFragments(recentOutputsFromNode(input.node).join("\n"));
 
   return {
     user: {
@@ -158,6 +315,9 @@ function buildPromptTemplateData(
     node: {
       storyContext: compactStoryContext(input.node.context || "(empty)"),
       storySetup: storySetupFromContext(input.node.context || "") || "(empty)",
+      promptMemory: promptMemoryFromInput(input),
+      worldInfoBefore: worldInfoBeforeFromInput(input),
+      worldInfoAfter: worldInfoAfterFromInput(input),
       fullExchange: fullExchangeFromContext(input.node.context || "") || compactStoryContext(input.node.context || "(empty)"),
       latestPreviousTurn: latestPreviousTurnFromContext(input.node.context || "") || "(empty)",
       recentOutputToAvoid: recentOutputToAvoidText(input.node),
@@ -165,30 +325,71 @@ function buildPromptTemplateData(
       userText: input.node.userText || "(empty)",
       dialogue: input.node.dialogue || "(empty)"
     },
-    romance,
-    beat: {
-      id: selectedBeat.id,
-      label: selectedBeat.label ?? sentenceStart(selectedBeat.id.replace(/_/g, " ")),
-      directive: selectedBeat.directive,
-      constraint: selectedBeat.constraint ?? "Keep the beat grounded in the visible exchange and current scene.",
-      avoid: selectedBeat.avoid ?? "Do not turn the beat into unrelated plot novelty.",
-      minCloseness: selectedBeat.minCloseness ?? 0,
-      typicalAfter: selectedBeat.typicalAfter ?? noveltyContext.closeness,
-      tags: selectedBeat.tags?.join(", ") ?? "romance"
-    },
+    romance: agentPass.romance,
+    npcPersonna: agentPass.npcPersonna,
+    sexScene: agentPass.sexScene,
+    agentNotes: agentPass.notes.map((note) => ({ source: note.source, text: note.text })),
     novelty: {
-      axis: selectedNoveltyPlan.axis,
-      directive: selectedNoveltyPlan.directive,
-      hasForbiddenFragments: selectedNoveltyPlan.forbiddenFragments.length > 0,
-      forbiddenFragmentsBlock: selectedNoveltyPlan.forbiddenFragments.map((fragment) => "  - " + fragment).join("\n")
+      freshnessRule: freshnessRuleFromForbiddenFragments(forbiddenFragments),
+      noveltyControlSummary: noveltyControlSummary(input.novelty),
+      detailBudgetInstruction: detailBudgetInstructionForControls(input.novelty),
+      turnRedirect: noveltySelection?.redirectText ?? "Do not force a new novelty beat this turn. Stabilize the scene and answer the latest player input directly.",
+      coherenceSummary: noveltySelectionSummary(noveltySelection)
     },
     antiPatterns: ROMANCE_ANTI_PATTERNS.map((text) => ({ text }))
   };
 }
 
+
+function freshnessRuleFromForbiddenFragments(forbiddenFragments: string[]): string {
+  if (forbiddenFragments.length === 0) {
+    return "Do not paraphrase the immediately previous reply or repeat its sentence shape.";
+  }
+
+  return `Do not reuse these recent fragments or their sentence shape: ${forbiddenFragments.slice(0, 4).join("; ")}.`;
+}
+
 function romancePromptViewFromContribution(contribution: ReturnType<typeof ROMANCE_AGENT.run>): Record<string, unknown> {
   return (contribution.promptViews?.romance as Record<string, unknown> | undefined) ?? {};
 }
+
+function sexScenePromptViewFromContribution(contribution: ReturnType<typeof SEX_SCENE_AGENT.run>): Record<string, unknown> {
+  return (contribution.promptViews?.sexScene as Record<string, unknown> | undefined) ?? {};
+}
+
+function npcPersonnaPromptViewFromContribution(contribution: ReturnType<typeof NPC_PERSONNA_AGENT.run>): Record<string, unknown> {
+  return (contribution.promptViews?.npcPersonna as Record<string, unknown> | undefined) ?? {};
+}
+
+function promptMemoryFromInput(input: RpPromptRenderInput): string {
+  const setup = storySetupFromContext(input.node.context || "");
+  const previousVisual = input.node.visualDescription || lastVisualCueFromContext(input.node.context || "");
+  const memory = [
+    setup ? `Story setup: ${setup}` : "",
+    previousVisual ? `Last visual cue: ${previousVisual}` : "",
+    input.node.resolverText?.trim() ? `Resolved visual tags: ${input.node.resolverText.trim()}` : ""
+  ].filter(Boolean);
+
+  return memory.length ? memory.join("\n") : "(empty)";
+}
+
+function worldInfoBeforeFromInput(input: RpPromptRenderInput): string {
+  const setup = storySetupFromContext(input.node.context || "");
+
+  return setup || "(empty)";
+}
+
+function worldInfoAfterFromInput(input: RpPromptRenderInput): string {
+  const previousVisual = input.node.visualDescription || lastVisualCueFromContext(input.node.context || "");
+  const recentAvoid = recentOutputToAvoidText(input.node);
+  const lines = [
+    previousVisual && previousVisual !== "(empty)" ? `Last visible state: ${previousVisual}` : "",
+    recentAvoid && recentAvoid !== "(empty)" ? `Recent phrasing to avoid: ${recentAvoid}` : ""
+  ].filter(Boolean);
+
+  return lines.length ? lines.join("\n") : "(empty)";
+}
+
 
 function rpIdentityInstructionTemplate(): string {
   return [
@@ -231,6 +432,56 @@ function storyContextBlockTemplate(): string {
     "This is the full accumulated story memory. Use it for continuity, callbacks, tone, and consequences."
   ].join("\n");
 }
+
+function promptManagerLayoutBlockTemplate(): string {
+  return [
+    "PROMPT_MANAGER_LAYOUT:",
+    "- Treat this prompt like a SillyTavern-style ordered stack: main instructions first, world/lore memory next, chat history, then post-history instructions last.",
+    "- Higher sections define stable rules; later CURRENT_TURN and POST_HISTORY_INSTRUCTIONS decide this exact output.",
+    "- Do not expose section names, hidden planning, or implementation metadata in the story text."
+  ].join("\n");
+}
+
+function worldInfoBeforeBlockTemplate(): string {
+  return [
+    "WORLD_INFO_BEFORE_HISTORY:",
+    "{{node.worldInfoBefore}}",
+    "",
+    "Use this as stable lore and setup, not as text to copy verbatim."
+  ].join("\n");
+}
+
+function promptMemoryBlockTemplate(): string {
+  return [
+    "PROMPT_MEMORY:",
+    "{{node.promptMemory}}",
+    "",
+    "This is compressed memory for continuity; prefer it over inventing new background facts."
+  ].join("\n");
+}
+
+function worldInfoAfterBlockTemplate(): string {
+  return [
+    "WORLD_INFO_AFTER_HISTORY:",
+    "{{node.worldInfoAfter}}",
+    "",
+    "Use this as a late reminder for continuity and anti-repetition."
+  ].join("\n");
+}
+
+function postHistoryInstructionBlockTemplate(): string {
+  return [
+    "POST_HISTORY_INSTRUCTIONS:",
+    "- TURN_REDIRECT: {{novelty.turnRedirect}}",
+    "- RP-LLM coherence: {{novelty.coherenceSummary}}",
+    "- Authority rule: TURN_REDIRECT is the only accepted scene movement for this reply.",
+    "- Agent notes are continuity and style constraints; do not combine unselected agent ideas into extra novelty.",
+    "- Freshness rule: {{novelty.freshnessRule}}",
+    "- Novelty controls are code-side only: {{novelty.noveltyControlSummary}}",
+    "- Detail budget: {{novelty.detailBudgetInstruction}}"
+  ].join("\n");
+}
+
 
 function latestPreviousTurnBlockTemplate(): string {
   return [
@@ -278,16 +529,59 @@ function romancePromptViewBlockTemplate(): string {
   ].join("\n");
 }
 
-function selectedBeatBlockTemplate(): string {
+
+function npcPersonnaPromptViewBlockTemplate(): string {
   return [
-    "THIS_TURN_ROMANCE_BEAT:",
-    "- Beat: {{beat.label}}.",
-    "- Minimum closeness: {{beat.minCloseness}}. Typical after: {{beat.typicalAfter}}.",
-    "- Tags: {{beat.tags}}.",
-    "- Direction: {{beat.directive}}",
-    "- Constraint: {{beat.constraint}}",
-    "- Avoid: {{beat.avoid}}",
-    "- Apply exactly one major romance beat."
+    "NPC_PERSONNA_STATE:",
+    "- Source: {{npcPersonna.source}}. Context hash: {{npcPersonna.contextHash}}.",
+    "- Dere archetype: {{npcPersonna.dereLabel}} ({{npcPersonna.core}})",
+    "- Temperament: {{npcPersonna.temperament}}. Attachment: {{npcPersonna.attachmentStyle}}. Core value: {{npcPersonna.coreValue}}.",
+    "- Flaw/vulnerability: {{npcPersonna.flaw}} / {{npcPersonna.vulnerability}}.",
+    "- Affection style: {{npcPersonna.loveLanguage}}. Pressure response: {{npcPersonna.pressureResponse}}.",
+    "- Public mask: {{npcPersonna.publicMask}}. Private tell: {{npcPersonna.privateTell}}.",
+    "- Dialogue style: {{npcPersonna.dialogueStyle}}",
+    "- Detail lifetimes: {{#npcPersonna.detailLifetimes}}{{.}}; {{/npcPersonna.detailLifetimes}}",
+    "- Novelty levers: {{#npcPersonna.noveltyLevers}}{{.}}; {{/npcPersonna.noveltyLevers}}",
+    "- Selected personna novelty: {{npcPersonna.selectedInfluence}}. Should influence this turn: {{npcPersonna.shouldInfluenceNovelty}}.",
+    "- Selected directive: {{npcPersonna.selectedInfluenceDirective}}",
+    "- Selected constraint: {{npcPersonna.selectedInfluenceConstraint}}",
+    "- Agent instruction: {{npcPersonna.noveltyInstruction}}",
+    "- Preserve seed/arc personna dimensions. A quirk may affect delivery, a mistake, a protective choice, or a private tell; it must not become random external plot."
+  ].join("\n");
+}
+
+function romanticClichePromptViewBlockTemplate(): string {
+  return [
+    "ROMANTIC_CLICHE_STATE:",
+    "- Summary: {{romance.clicheDetailSummary}}",
+    "- Families: {{#romance.clicheFamilies}}{{.}}; {{/romance.clicheFamilies}}",
+    "- Detail lifetimes: {{#romance.clicheDetailLifetimes}}{{.}}; {{/romance.clicheDetailLifetimes}}",
+    "- Novelty target facets: {{#romance.clicheTargetFacets}}{{.}}; {{/romance.clicheTargetFacets}}",
+    "- Agent instruction: {{romance.clicheNoveltyInstruction}}",
+    "- Romantic cliches are independent interaction facets, not a required order. Do not stack many tropes in one reply."
+  ].join("\n");
+}
+
+function sexScenePromptViewBlockTemplate(): string {
+  return [
+    "SEX_SCENE_DETAIL_STATE:",
+    "- Active: {{sexScene.active}}. Step: {{sexScene.label}}. Novelty pressure: {{sexScene.noveltyPressure}}.",
+    "- Summary: {{sexScene.detailSummary}}",
+    "- Detail lifetimes: {{#sexScene.detailLifetimes}}{{.}}; {{/sexScene.detailLifetimes}}",
+    "- Novelty facet targets this turn: {{#sexScene.noveltyFacetTargets}}{{.}}; {{/sexScene.noveltyFacetTargets}}",
+    "- Adult framing required: {{sexScene.requiresAdultFraming}}. Fade to black: {{sexScene.shouldFadeToBlack}}. Boundary detected: {{sexScene.boundaryDetected}}.",
+    "- Sex-scene / novelty bridge: {{sexScene.noveltyBridgeInstruction}}",
+    "- Post-history intimacy instruction: {{sexScene.postHistoryInstruction}}",
+    "- Treat position, contact, clothing, camera/framing, setting, and aftercare as independent facets. Do not force a fake order among unrelated details."
+  ].join("\n");
+}
+
+function agentNotesBlockTemplate(): string {
+  return [
+    "AGENT_NOTES:",
+    "{{#agentNotes}}- {{source}}: {{text}}\n{{/agentNotes}}",
+    "",
+    "These notes describe state and style only. They are not separate scene actions unless TURN_REDIRECT selects one."
   ].join("\n");
 }
 
@@ -338,32 +632,27 @@ function playerExampleBlockTemplate(): string[] {
 
 function counterpartNoveltyRequestBlockTemplate(): string {
   return [
-    "INTERNAL_ROMANCE_NOVELTY_REQUEST:",
-    "- This block is for generation control only. Do not mention it.",
-    "- Novelty axis: {{novelty.axis}}.",
-    "- {{novelty.directive}}",
-    "- The novelty must come from recognition, tension, vulnerability, trust, boundary, consent-aware closeness, or callback meaning.",
-    "- The output must not merely reword a recent event.",
-    "- Prefer deepening an existing hook over adding a new external event.",
-    "{{#novelty.hasForbiddenFragments}}- Forbidden recent fragments:\n{{novelty.forbiddenFragmentsBlock}}{{/novelty.hasForbiddenFragments}}"
+    "INTERNAL_REDIRECT_REQUEST:",
+    "- TURN_REDIRECT: {{novelty.turnRedirect}}",
+    "- RP-LLM coherence: {{novelty.coherenceSummary}}",
+    "- Use no other agent candidate this turn."
   ].join("\n");
 }
 
 function playerNoveltyRequestBlockTemplate(): string {
   return [
-    "INTERNAL_PLAYER_RESPONSE_REQUEST:",
-    "- This block is for generation control only. Do not mention it.",
-    "- Player response axis: {{novelty.axis}}.",
-    "- {{novelty.directive}}",
-    "- USER_REPLY must be one short command, spoken line, or direct action by {{user.name}}.",
-    "- Do not narrate {{npc.name}}, the room, lighting, facial expressions, or aftermath.",
-    "{{#novelty.hasForbiddenFragments}}- Forbidden recent fragments:\n{{novelty.forbiddenFragmentsBlock}}{{/novelty.hasForbiddenFragments}}"
+    "INTERNAL_PLAYER_REDIRECT_REQUEST:",
+    "- TURN_REDIRECT: {{novelty.turnRedirect}}",
+    "- RP-LLM coherence: {{novelty.coherenceSummary}}",
+    "- USER_REPLY must be one short command, spoken line, or direct action by {{user.name}}."
   ].join("\n");
 }
 
 function layoutCounterpartAnswerPromptTemplate(): string {
   return [
     rpIdentityInstructionTemplate(),
+    "",
+    promptManagerLayoutBlockTemplate(),
     "",
     romanceModeBlockTemplate(),
     "",
@@ -373,6 +662,10 @@ function layoutCounterpartAnswerPromptTemplate(): string {
     "",
     actorMetadataBlockTemplate(),
     "",
+    worldInfoBeforeBlockTemplate(),
+    "",
+    promptMemoryBlockTemplate(),
+    "",
     storyContextBlockTemplate(),
     "",
     fullExchangeBlockTemplate(),
@@ -381,22 +674,33 @@ function layoutCounterpartAnswerPromptTemplate(): string {
     "",
     currentPlayerTurnBlockTemplate(),
     "",
+    worldInfoAfterBlockTemplate(),
+    "",
     previousVisualBlockTemplate(),
     "",
     recentOutputToAvoidBlockTemplate(),
     "",
+    npcPersonnaPromptViewBlockTemplate(),
+    "",
     romancePromptViewBlockTemplate(),
     "",
-    selectedBeatBlockTemplate(),
+    romanticClichePromptViewBlockTemplate(),
+    "",
+    sexScenePromptViewBlockTemplate(),
+    "",
+    agentNotesBlockTemplate(),
     "",
     counterpartNoveltyRequestBlockTemplate(),
     "",
     antiPatternBlockTemplate(),
     "",
+    postHistoryInstructionBlockTemplate(),
+    "",
     "FINAL TASK:",
     "Write only the next textbox reply for {{npc.name}} and brief third-person scene narration.",
     "Respond directly to CURRENT_TURN.",
-    "Advance the romantic dynamic by exactly one meaningful beat using THIS_TURN_ROMANCE_BEAT.",
+    "Follow TURN_REDIRECT as the single accepted novelty direction; do not combine it with other agent ideas.",
+    "Use agent notes only for continuity, voice, and constraints; do not introduce unaccepted agent candidates.",
     "End with room for {{user.name}} to respond; do not resolve the whole relationship too quickly.",
     "Maximum 65 words.",
     "",
@@ -407,6 +711,8 @@ function layoutCounterpartAnswerPromptTemplate(): string {
 function layoutAutomaticPlayerAnswerPromptTemplate(): string {
   return [
     rpIdentityInstructionTemplate(),
+    "",
+    promptManagerLayoutBlockTemplate(),
     "",
     romanceModeBlockTemplate(),
     "",
@@ -425,62 +731,92 @@ function layoutAutomaticPlayerAnswerPromptTemplate(): string {
     "",
     actorMetadataBlockTemplate(),
     "",
+    worldInfoBeforeBlockTemplate(),
+    "",
+    promptMemoryBlockTemplate(),
+    "",
     storyContextBlockTemplate(),
     "",
     fullExchangeBlockTemplate(),
     "",
     latestPreviousTurnBlockTemplate(),
     "",
+    worldInfoAfterBlockTemplate(),
+    "",
     recentOutputToAvoidBlockTemplate(),
+    "",
+    npcPersonnaPromptViewBlockTemplate(),
     "",
     romancePromptViewBlockTemplate(),
     "",
-    selectedBeatBlockTemplate(),
+    romanticClichePromptViewBlockTemplate(),
+    "",
+    sexScenePromptViewBlockTemplate(),
+    "",
+    agentNotesBlockTemplate(),
     "",
     playerNoveltyRequestBlockTemplate(),
     "",
     antiPatternBlockTemplate(),
     "",
+    postHistoryInstructionBlockTemplate(),
+    "",
     "FINAL TASK:",
     "Write only the next textbox reply for {{user.name}}.",
+    "Follow TURN_REDIRECT as the single accepted novelty direction; do not combine it with other agent ideas.",
+    "If TURN_REDIRECT says stabilize, answer with one safe, direct, low-risk choice instead of adding novelty.",
     "Maximum 28 words.",
     "",
     "OUTPUT ONLY THAT TEXT BELOW:"
   ].join("\n");
 }
 
-function renderRpAnswerPromptWithResolvedActors(input: RpPromptRenderInput): RpPromptBuildResult {
-  const forcedNovelty = forcedNoveltyFromPromptInput(input);
-  const promptInput = applyForcedNoveltyToPromptInput(input, forcedNovelty);
-  const romanceContribution = ROMANCE_AGENT.run({
-    node: promptInput.node,
-    promptInput,
-    forcedNovelty
-  });
-  const noveltyContext = romanceContribution.novelty?.context!;
-  const advancementCard = selectRomanceAdvancement(promptInput, noveltyContext);
-  const noveltyPlan = noveltyPlanFromBeat(advancementCard, noveltyContext, extractForbiddenFragments(recentOutputsFromNode(input.node).join("\n")));
+function noveltySceneTextFromInput(input: RpPromptRenderInput): string {
+  return [
+    "FULL_STORY_CONTEXT:",
+    compactStoryContext(input.node.context || "(empty)"),
+    "",
+    "LATEST_PREVIOUS_TURN:",
+    latestPreviousTurnFromContext(input.node.context || "") || "(empty)",
+    "",
+    "CURRENT_TURN:",
+    input.node.userText?.trim() ? `USER: ${input.node.userText.trim()}` : "USER: (empty)",
+    input.node.dialogue?.trim() ? `NPC_REPLY: ${input.node.dialogue.trim()}` : "",
+    "",
+    "PREVIOUS_VISUAL:",
+    input.node.visualDescription || lastVisualCueFromContext(input.node.context || "") || "(empty)",
+    "",
+    "RECENT_OUTPUT_TO_AVOID:",
+    recentOutputToAvoidText(input.node)
+  ].filter((line) => line !== "").join("\n");
+}
+
+async function renderRpAnswerPromptWithResolvedActors(
+  input: RpPromptRenderInput,
+  runHiddenNoveltyCoherence?: NoveltyCoherenceRunner
+): Promise<RpPromptBuildResult> {
+  const loop = await runCoherentRedirectPromptLoop(input, romanceAdvancementDeck(), runHiddenNoveltyCoherence);
   const template = layoutCounterpartAnswerPromptTemplate();
-  const data = buildPromptTemplateData(promptInput, advancementCard, noveltyPlan);
+  const data = buildPromptTemplateData(loop.promptInput, loop.agentPass, loop.noveltySelection);
 
   return {
-    advancementCard,
-    noveltyPlan,
     actorNames: input.actorNames ?? null,
-    prompt: renderPromptTemplate(template, data)
+    prompt: renderPromptTemplate(template, data),
+    debugTrace: loop.debugTrace
   };
 }
 
 export async function buildRpAnswerPromptWithActorNameCache(
   input: RpPromptInput,
-  runHiddenActorNameExtraction: ActorNameExtractionRunner
+  runHiddenActorNameExtraction: ActorNameExtractionRunner,
+  runHiddenNoveltyCoherence?: NoveltyCoherenceRunner
 ): Promise<RpPromptBuildResult> {
   const actorNames = await resolveActorNamesForPrompt(input, runHiddenActorNameExtraction);
 
   return renderRpAnswerPromptWithResolvedActors({
     ...input,
     actorNames
-  });
+  }, runHiddenNoveltyCoherence);
 }
 
 function renderVisualRepresentationPromptWithResolvedActors(input: RpPromptRenderInput): string {
@@ -506,38 +842,32 @@ export async function buildVisualRepresentationPromptWithActorNameCache(
   });
 }
 
-function renderAutomaticUserAnswerPromptWithResolvedActors(input: RpPromptRenderInput): RpPromptBuildResult {
-  const forcedNovelty = forcedNoveltyFromPromptInput(input);
-  const promptInput = applyForcedNoveltyToPromptInput(input, forcedNovelty);
-  const romanceContribution = ROMANCE_AGENT.run({
-    node: promptInput.node,
-    promptInput,
-    forcedNovelty
-  });
-  const noveltyContext = romanceContribution.novelty?.context!;
-  const advancementCard = selectRomanceBeat(promptInput, PLAYER_RESPONSE_BEATS, noveltyContext);
-  const noveltyPlan = noveltyPlanFromBeat(advancementCard, noveltyContext, extractForbiddenFragments(recentOutputsFromNode(input.node).join("\n")));
+async function renderAutomaticUserAnswerPromptWithResolvedActors(
+  input: RpPromptRenderInput,
+  runHiddenNoveltyCoherence?: NoveltyCoherenceRunner
+): Promise<RpPromptBuildResult> {
+  const loop = await runCoherentRedirectPromptLoop(input, playerResponseAdvancementDeck(), runHiddenNoveltyCoherence);
   const template = layoutAutomaticPlayerAnswerPromptTemplate();
-  const data = buildPromptTemplateData(promptInput, advancementCard, noveltyPlan);
+  const data = buildPromptTemplateData(loop.promptInput, loop.agentPass, loop.noveltySelection);
 
   return {
-    advancementCard,
-    noveltyPlan,
     actorNames: input.actorNames ?? null,
-    prompt: renderPromptTemplate(template, data)
+    prompt: renderPromptTemplate(template, data),
+    debugTrace: loop.debugTrace
   };
 }
 
 export async function buildAutomaticUserAnswerPromptWithActorNameCache(
   input: RpPromptInput,
-  runHiddenActorNameExtraction: ActorNameExtractionRunner
+  runHiddenActorNameExtraction: ActorNameExtractionRunner,
+  runHiddenNoveltyCoherence?: NoveltyCoherenceRunner
 ): Promise<RpPromptBuildResult> {
   const actorNames = await resolveActorNamesForPrompt(input, runHiddenActorNameExtraction);
 
   return renderAutomaticUserAnswerPromptWithResolvedActors({
     ...input,
     actorNames
-  });
+  }, runHiddenNoveltyCoherence);
 }
 
 /**

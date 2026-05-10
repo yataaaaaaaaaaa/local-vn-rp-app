@@ -15,6 +15,7 @@ export function buildVisualPlannerPrompt(input: {
 
   return [
     "You answer short visual image-prompt questions.",
+    "Use a SillyTavern-style prompt stack: stable story context, current exchange, known visual decisions, then the final answer contract.",
     "Use the full story context and the current visual description.",
     "Answer naturally, but keep the answer short.",
     "Do not output JSON.",
@@ -22,6 +23,7 @@ export function buildVisualPlannerPrompt(input: {
     "Do not output bullet lists.",
     "Do not add explanations.",
     "Do not invent details that contradict the current scene.",
+    "When uncertain, prefer already-established visual facts over novelty.",
     "",
     "FULL STORY CONTEXT:",
     node.context.trim() || "(empty)",
@@ -37,6 +39,11 @@ export function buildVisualPlannerPrompt(input: {
     "",
     "KNOWN VISUAL DECISIONS FOR THIS SCENE:",
     formatKnownFacts(input.facts),
+    "",
+    "POST_HISTORY_VISUAL_CONTRACT:",
+    "- Answer only the requested visual classification or description.",
+    "- Preserve character identity, clothing continuity, location, lighting, and camera-visible facts.",
+    "- Do not add a new event, new character, or hidden internal state just to make the image more novel.",
     "",
     input.question,
     "",

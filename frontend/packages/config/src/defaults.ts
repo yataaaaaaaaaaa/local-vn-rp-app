@@ -6,6 +6,7 @@ export type BackendRuntimeConfigPatch = Partial<{
   llm: Partial<BackendRuntimeConfig["llm"]>;
   image: Partial<BackendRuntimeConfig["image"]>;
   prompts: Partial<BackendRuntimeConfig["prompts"]>;
+  novelty: Partial<BackendRuntimeConfig["novelty"]>;
   danbot: Partial<BackendRuntimeConfig["danbot"]>;
 }>;
 
@@ -54,6 +55,17 @@ export function createDefaultBackendRuntimeConfig(overrides: BackendRuntimeConfi
       default_positive_prompt: "",
       default_negative_prompt: "lowres, bad anatomy"
     },
+    novelty: {
+      level: 1,
+      agent_influence: 1,
+      romance_cliche_influence: 1,
+      npc_personna_influence: 1,
+      sex_scene_influence: 1,
+      repetition_guard: 1,
+      detail_budget: 1,
+      coherence_retries: 3,
+      candidate_pool_size: 8
+    },
     danbot: {
       backend: "danbot_nl",
       model_path: "",
@@ -85,6 +97,7 @@ function mergeBackendRuntimeConfig(base: BackendRuntimeConfig, overrides: Backen
     llm: { ...base.llm, ...stripRuntimeOwnedLlmSettings(overrides.llm), backend: "llama_server" },
     image: { ...base.image, ...overrides.image, backend: "diffusers", manual_lora_paths: overrides.image?.manual_lora_paths ?? base.image.manual_lora_paths },
     prompts: { ...base.prompts, ...overrides.prompts },
+    novelty: { ...base.novelty, ...overrides.novelty },
     danbot: { ...base.danbot, ...overrides.danbot, backend: "danbot_nl" }
   };
 }

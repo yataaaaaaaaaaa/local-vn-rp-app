@@ -11,6 +11,11 @@ describe("config package", () => {
     expect(config.danbot.backend).toBe("danbot_nl");
     expect(config.prompts.default_negative_prompt).toBe("lowres, bad anatomy");
     expect(config.prompts.default_positive_prompt).toBe("");
+    expect(config.novelty.level).toBe(1);
+    expect(config.novelty.agent_influence).toBe(1);
+    expect(config.novelty.detail_budget).toBe(1);
+    expect(config.novelty.coherence_retries).toBe(3);
+    expect(config.novelty.candidate_pool_size).toBe(8);
     expect("story" in config).toBe(false);
   });
 
@@ -33,10 +38,14 @@ describe("config package", () => {
     const migrated = migrateBackendRuntimeConfig({
       image: { default_steps: 30 },
       prompts: { default_positive_prompt: "cinematic lighting" },
+      novelty: { level: 1.6, agent_influence: 3, repetition_guard: -1 },
       danbot: { max_tags: 12 }
     });
     expect(migrated.image.default_steps).toBe(30);
     expect(migrated.prompts.default_positive_prompt).toBe("cinematic lighting");
+    expect(migrated.novelty.level).toBe(1.6);
+    expect(migrated.novelty.agent_influence).toBe(2);
+    expect(migrated.novelty.repetition_guard).toBe(0);
     expect(migrated.danbot.max_tags).toBe(12);
   });
 

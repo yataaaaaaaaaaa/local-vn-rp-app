@@ -165,6 +165,161 @@ describe("RP novel prompts", () => {
     expect(visualPrompt).toContain("FULL_STORY_CONTEXT:");
   });
 
+
+
+
+
+
+  it("uses hidden RP-LLM coherence selection to produce one TURN_REDIRECT", async () => {
+    const coherencePrompts: string[] = [];
+    const result = await buildRpAnswerPromptWithActorNameCache(
+      {
+        node: {
+          context: "NPC_PERSONNA: Rei is a cool kuudere. PREVIOUS_TURN:\nUSER: The thunder startled me.\nNPC: I noticed.",
+          userText: "You moved before I even looked up.",
+          dialogue: "",
+          visualDescription: "Rain taps the window.",
+          resolverText: "",
+          selectedTags: "",
+          danbotTags: "",
+          positivePrompt: "",
+          negativePrompt: "",
+          imageRef: ""
+        },
+        novelty: { coherence_retries: 2, candidate_pool_size: 4 },
+        rng: () => 0
+      },
+      runHiddenActorNameExtraction,
+      async (prompt) => {
+        coherencePrompts.push(prompt);
+        return "YES";
+      }
+    );
+
+    expect(coherencePrompts.length).toBe(1);
+    expect(coherencePrompts[0]).toContain("CANDIDATE_REDIRECT:");
+    expect(result.prompt).toContain("TURN_REDIRECT:");
+    expect(result.prompt).toContain("RP-LLM coherence accepted");
+    expect(result.prompt).toContain("single accepted novelty direction");
+  });
+
+  it("injects NPC personna state and personna novelty guidance into final RP prompt", async () => {
+    const prompt = await buildNpcPrompt({
+      node: {
+        context: "NPC_PERSONNA: Rei is a cool kuudere who protects the player from tiny problems. PREVIOUS_TURN:\nUSER: The thunder startled me.",
+        userText: "You moved before I even looked up.",
+        dialogue: "",
+        visualDescription: "Rain runs down the window.",
+        resolverText: "",
+        selectedTags: "",
+        danbotTags: "",
+        positivePrompt: "",
+        negativePrompt: "",
+        imageRef: ""
+      }
+    });
+
+    expect(prompt).toContain("NPC_PERSONNA_STATE:");
+    expect(prompt).toContain("Dere archetype: kuudere");
+    expect(prompt).toContain("NPC-personna detail delta:");
+    expect(prompt).toContain("NPC-personna constraint:");
+    expect(prompt).toContain("Selected personna novelty:");
+    expect(prompt).toContain("preserve seed/arc personna dimensions");
+  });
+
+  it("injects sex-scene facet state into final RP prompt", async () => {
+    const prompt = await buildNpcPrompt({
+      node: {
+        context: "Both characters are adults in a private bedroom. PREVIOUS_TURN:\nUSER: Stay close.",
+        userText: "Only if you keep checking in.",
+        dialogue: "",
+        visualDescription: "They sit at the edge of the bed under a blanket.",
+        resolverText: "",
+        selectedTags: "",
+        danbotTags: "",
+        positivePrompt: "",
+        negativePrompt: "",
+        imageRef: ""
+      }
+    });
+
+    expect(prompt).toContain("ROMANTIC_CLICHE_STATE:");
+    expect(prompt).toContain("Romantic-cliche detail delta:");
+    expect(prompt).toContain("SEX_SCENE_DETAIL_STATE:");
+    expect(prompt).toContain("Detail lifetimes:");
+    expect(prompt).toContain("independent facets");
+    expect(prompt).toContain("Post-history intimacy instruction:");
+    expect(prompt).toContain("Sex-scene / novelty bridge:");
+    expect(prompt).toContain("Novelty facet targets this turn:");
+    expect(prompt).toContain("Intimacy detail delta:");
+  });
+
+  it("injects global novelty-control scalars into final RP prompt", async () => {
+    const prompt = await buildNpcPrompt({
+      node: {
+        context: "Darkness is the main NPC. Kazuma is the user/player character.",
+        userText: "Do something unexpected, but keep it small.",
+        dialogue: "",
+        visualDescription: "They stand beside a candlelit table.",
+        resolverText: "",
+        selectedTags: "",
+        danbotTags: "",
+        positivePrompt: "",
+        negativePrompt: "",
+        imageRef: ""
+      },
+      novelty: {
+        level: 0.35,
+        agent_influence: 0.25,
+        romance_cliche_influence: 0.1,
+        npc_personna_influence: 0.2,
+        sex_scene_influence: 0.15,
+        repetition_guard: 1.8,
+        detail_budget: 0.2
+      }
+    });
+
+    expect(prompt).toContain("Novelty controls:");
+    expect(prompt).toContain("level=0.35");
+    expect(prompt).toContain("agent_influence=0.25");
+    expect(prompt).toContain("Novelty detail budget: stabilize the scene");
+  });
+
+  it("uses prompt-manager style memory and post-history novelty instructions", async () => {
+    const prompt = await buildNpcPrompt({
+      node: {
+        context: [
+          "INITIAL SETUP: The archive smells of old parchment.",
+          "Darkness is the main NPC. Kazuma is the user/player character.",
+          "PREVIOUS_TURN:",
+          "USER: You remembered the candle?",
+          "NPC: Of course I did."
+        ].join("\n"),
+        userText: "What else did you remember?",
+        dialogue: "",
+        visualDescription: "Darkness stands beside the candlelit table.",
+        resolverText: "The tags that describe the image are: 1girl, candlelight",
+        selectedTags: "",
+        danbotTags: "",
+        positivePrompt: "",
+        negativePrompt: "",
+        imageRef: ""
+      },
+      rng: () => 0
+    });
+
+    expect(prompt).toContain("PROMPT_MANAGER_LAYOUT:");
+    expect(prompt).toContain("WORLD_INFO_BEFORE_HISTORY:");
+    expect(prompt).toContain("PROMPT_MEMORY:");
+    expect(prompt).toContain("WORLD_INFO_AFTER_HISTORY:");
+    expect(prompt).toContain("POST_HISTORY_INSTRUCTIONS:");
+    expect(prompt).toContain("ROMANTIC_CLICHE_STATE:");
+    expect(prompt).toContain("Relationship delta:");
+    expect(prompt).toContain("Freshness rule:");
+    expect(prompt).toContain("Romantic-cliche continuity:");
+    expect(prompt).toContain("Resolved visual tags: The tags that describe the image are: 1girl, candlelight");
+  });
+
   it("cleans labels after generation instead of relying on brittle hard stops", () => {
     expect(cleanDialogueOutput("Assistant: I am ready.\nUser: future input")).toBe("I am ready.");
     expect(
