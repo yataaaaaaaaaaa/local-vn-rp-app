@@ -3,7 +3,7 @@ import { splitSentences } from "./text-utils";
 
 export function cleanUserTextOutput(text: string): string {
   const cleaned = cleanGeneratedOutput(text);
-  const quoted = extractFirstQuotedCompleteSentence(cleaned);
+  const quoted = extractFirstQuotedPlayerText(cleaned);
 
   if (quoted) return finalizeTextboxOutput(quoted, 1);
 
@@ -14,12 +14,29 @@ function cleanSingleLineOutput(text: string): string {
   return finalizeTextboxOutput(cleanGeneratedOutput(text), 1).split(/\r?\n/)[0]?.trim() ?? "";
 }
 
-function extractFirstQuotedCompleteSentence(text: string): string | null {
-  const quoteMatch = text.match(/["“]([^"”]+)["”]?/);
-  if (!quoteMatch) return null;
+function extractFirstQuotedPlayerText(text: string): string | null {
+  const quotedSegments = extractQuotedSegments(text);
 
-  const content = quoteMatch[1].trim();
-  const complete = splitSentences(content).find((sentence) => /[.!?]$/.test(sentence));
+  for (const segment of quotedSegments) {
+    const complete = splitSentences(segment).find((sentence) => /[.!?]$/.test(sentence));
+    if (complete) return complete;
+  }
 
-  return complete ?? content;
+  return quotedSegments[0] ?? null;
+}
+
+function extractQuotedSegments(text: string): string[] {
+  const segments: string[] = [];
+  const quotedText = /["\u201c]([^"\u201d]+)(?:["\u201d]|$)/gu;
+  let match: RegExpExecArray | null;
+
+  while ((match = quotedText.exec(text)) !== null) {
+    const segment = match[1]?.trim();
+
+    if (segment) {
+      segments.push(segment);
+    }
+  }
+
+  return segments;
 }

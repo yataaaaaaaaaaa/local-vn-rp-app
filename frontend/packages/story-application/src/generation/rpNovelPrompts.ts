@@ -2,6 +2,16 @@ import { cleanDialogueOutput } from "./rp-engine/cleaning/clean-dialogue";
 import { cleanUserTextOutput } from "./rp-engine/cleaning/clean-user-text";
 import { cleanVisualDescriptionOutput } from "./rp-engine/cleaning/clean-visual";
 import { renderPromptTemplate } from "./rp-engine/prompt/mustache-renderer";
+import { buildPromptContextView } from "./rp-engine/prompt/prompt-context-view";
+import { buildConcreteNoveltyInstruction } from "./rp-engine/prompt/concrete-novelty-instructions";
+import {
+  playerChoiceContextBlockTemplate,
+  playerChoiceExamplesBlockTemplate,
+  playerChoiceFinalTaskBlockTemplate,
+  playerChoiceIdentityBlockTemplate,
+  playerChoiceNoveltyBlockTemplate,
+  playerChoiceRulesBlockTemplate
+} from "./rp-engine/prompt/player-choice-prompt";
 import { extractForbiddenFragments } from "./rp-engine/novelty/repetition-guard";
 import { detailBudgetInstructionForControls, noveltyControlSummary, withNoveltyControls } from "./rp-engine/novelty/candidate-scoring";
 import {
@@ -24,11 +34,6 @@ import type { AgentContribution, AgentNoveltyCandidate, AgentRunInput, RpAgent }
 import { normalizeActorNames, resolvedActorLabels } from "./rp-engine/state/actor-state";
 import { buildActorNameExtractionPrompt, parseActorNameExtractionOutput } from "./rp-engine/tasks/actor-name-extract.task";
 import {
-  compactStoryContext,
-  fullExchangeFromContext,
-  lastVisualCueFromContext,
-  latestPreviousTurnFromContext,
-  recentOutputToAvoidText,
   recentOutputsFromNode,
   storySetupFromContext
 } from "./rp-engine/state/story-context";
@@ -99,8 +104,6 @@ type PromptTemplateData = {
     possessive: string;
   };
   node: {
-    storyContext: string;
-    storySetup: string;
     promptMemory: string;
     worldInfoBefore: string;
     worldInfoAfter: string;
@@ -121,6 +124,10 @@ type PromptTemplateData = {
     detailBudgetInstruction: string;
     turnRedirect: string;
     coherenceSummary: string;
+    concreteSelectedBeat: string;
+    concreteExecution: string;
+    concreteAllowedForms: Array<{ text: string }>;
+    concreteAvoid: Array<{ text: string }>;
   };
   antiPatterns: Array<{ text: string }>;
 };
@@ -300,6 +307,8 @@ function buildPromptTemplateData(
 ): PromptTemplateData {
   const labels = resolvedActorLabels(input.actorNames ?? null);
   const forbiddenFragments = extractForbiddenFragments(recentOutputsFromNode(input.node).join("\n"));
+  const promptContext = buildPromptContextView(input.node);
+  const concreteNovelty = buildConcreteNoveltyInstruction(noveltySelection);
 
   return {
     user: {
@@ -313,17 +322,15 @@ function buildPromptTemplateData(
       possessive: labels.npcPossessive
     },
     node: {
-      storyContext: compactStoryContext(input.node.context || "(empty)"),
-      storySetup: storySetupFromContext(input.node.context || "") || "(empty)",
-      promptMemory: promptMemoryFromInput(input),
-      worldInfoBefore: worldInfoBeforeFromInput(input),
-      worldInfoAfter: worldInfoAfterFromInput(input),
-      fullExchange: fullExchangeFromContext(input.node.context || "") || compactStoryContext(input.node.context || "(empty)"),
-      latestPreviousTurn: latestPreviousTurnFromContext(input.node.context || "") || "(empty)",
-      recentOutputToAvoid: recentOutputToAvoidText(input.node),
-      previousVisual: input.node.visualDescription || lastVisualCueFromContext(input.node.context || "") || "(empty)",
-      userText: input.node.userText || "(empty)",
-      dialogue: input.node.dialogue || "(empty)"
+      promptMemory: promptContext.promptMemory,
+      worldInfoBefore: promptContext.worldInfoBefore,
+      worldInfoAfter: promptContext.worldInfoAfter,
+      fullExchange: promptContext.priorExchange,
+      latestPreviousTurn: promptContext.latestPreviousTurn,
+      recentOutputToAvoid: promptContext.recentOutputToAvoid,
+      previousVisual: promptContext.previousVisual,
+      userText: promptContext.userText,
+      dialogue: promptContext.dialogue
     },
     romance: agentPass.romance,
     npcPersonna: agentPass.npcPersonna,
@@ -334,7 +341,11 @@ function buildPromptTemplateData(
       noveltyControlSummary: noveltyControlSummary(input.novelty),
       detailBudgetInstruction: detailBudgetInstructionForControls(input.novelty),
       turnRedirect: noveltySelection?.redirectText ?? "Do not force a new novelty beat this turn. Stabilize the scene and answer the latest player input directly.",
-      coherenceSummary: noveltySelectionSummary(noveltySelection)
+      coherenceSummary: noveltySelectionSummary(noveltySelection),
+      concreteSelectedBeat: concreteNovelty.selectedBeat,
+      concreteExecution: concreteNovelty.execution,
+      concreteAllowedForms: concreteNovelty.allowedForms.map((text) => ({ text })),
+      concreteAvoid: concreteNovelty.avoid.map((text) => ({ text }))
     },
     antiPatterns: ROMANCE_ANTI_PATTERNS.map((text) => ({ text }))
   };
@@ -360,36 +371,6 @@ function sexScenePromptViewFromContribution(contribution: ReturnType<typeof SEX_
 function npcPersonnaPromptViewFromContribution(contribution: ReturnType<typeof NPC_PERSONNA_AGENT.run>): Record<string, unknown> {
   return (contribution.promptViews?.npcPersonna as Record<string, unknown> | undefined) ?? {};
 }
-
-function promptMemoryFromInput(input: RpPromptRenderInput): string {
-  const setup = storySetupFromContext(input.node.context || "");
-  const previousVisual = input.node.visualDescription || lastVisualCueFromContext(input.node.context || "");
-  const memory = [
-    setup ? `Story setup: ${setup}` : "",
-    previousVisual ? `Last visual cue: ${previousVisual}` : "",
-    input.node.resolverText?.trim() ? `Resolved visual tags: ${input.node.resolverText.trim()}` : ""
-  ].filter(Boolean);
-
-  return memory.length ? memory.join("\n") : "(empty)";
-}
-
-function worldInfoBeforeFromInput(input: RpPromptRenderInput): string {
-  const setup = storySetupFromContext(input.node.context || "");
-
-  return setup || "(empty)";
-}
-
-function worldInfoAfterFromInput(input: RpPromptRenderInput): string {
-  const previousVisual = input.node.visualDescription || lastVisualCueFromContext(input.node.context || "");
-  const recentAvoid = recentOutputToAvoidText(input.node);
-  const lines = [
-    previousVisual && previousVisual !== "(empty)" ? `Last visible state: ${previousVisual}` : "",
-    recentAvoid && recentAvoid !== "(empty)" ? `Recent phrasing to avoid: ${recentAvoid}` : ""
-  ].filter(Boolean);
-
-  return lines.length ? lines.join("\n") : "(empty)";
-}
-
 
 function rpIdentityInstructionTemplate(): string {
   return [
@@ -421,15 +402,6 @@ function agencyRuleBlockTemplate(): string {
     "- Any narration or action prose must be third person and must not control {{user.name}}.",
     "- Do not use asterisks; write clean VN textbox prose.",
     "- End with complete terminal punctuation."
-  ].join("\n");
-}
-
-function storyContextBlockTemplate(): string {
-  return [
-    "FULL_STORY_CONTEXT:",
-    "{{node.storyContext}}",
-    "",
-    "This is the full accumulated story memory. Use it for continuity, callbacks, tone, and consequences."
   ].join("\n");
 }
 
@@ -494,10 +466,10 @@ function latestPreviousTurnBlockTemplate(): string {
 
 function fullExchangeBlockTemplate(): string {
   return [
-    "FULL_EXCHANGE_SO_FAR:",
+    "RECENT_EXCHANGE_BEFORE_LATEST:",
     "{{node.fullExchange}}",
     "",
-    "Use the full exchange for rhythm, callbacks, and romantic continuity."
+    "Use only for rhythm and callbacks. The latest turn is provided separately below."
   ].join("\n");
 }
 
@@ -616,20 +588,6 @@ function counterpartExampleBlockTemplate(): string[] {
   ];
 }
 
-function playerExampleBlockTemplate(): string[] {
-  return [
-    "GOOD USER_REPLY EXAMPLES:",
-    "Then stop pretending it does not matter.",
-    "I take one step closer, but leave the last one to you.",
-    "Not yet. Tell me what you actually want first.",
-    "",
-    "BAD USER_REPLY EXAMPLES:",
-    "She smiles, overwhelmed by my response.",
-    "The room fills with moonlight as destiny seals us together.",
-    "I blush uncontrollably and realize I love you."
-  ];
-}
-
 function counterpartNoveltyRequestBlockTemplate(): string {
   return [
     "INTERNAL_REDIRECT_REQUEST:",
@@ -639,12 +597,14 @@ function counterpartNoveltyRequestBlockTemplate(): string {
   ].join("\n");
 }
 
-function playerNoveltyRequestBlockTemplate(): string {
+function concreteNoveltyInstructionBlockTemplate(): string {
   return [
-    "INTERNAL_PLAYER_REDIRECT_REQUEST:",
-    "- TURN_REDIRECT: {{novelty.turnRedirect}}",
-    "- RP-LLM coherence: {{novelty.coherenceSummary}}",
-    "- USER_REPLY must be one short command, spoken line, or direct action by {{user.name}}."
+    "CONCRETE_NOVELTY_BEAT:",
+    "- Selected beat: {{novelty.concreteSelectedBeat}}",
+    "- Concrete execution: {{novelty.concreteExecution}}",
+    "- Scene anchor rule: reuse an existing concrete object, task, place, or wording from the accepted context when available; otherwise choose the smallest plausible physical move.",
+    "- Allowed forms: {{#novelty.concreteAllowedForms}}{{text}}; {{/novelty.concreteAllowedForms}}",
+    "- Avoid: {{#novelty.concreteAvoid}}{{text}}; {{/novelty.concreteAvoid}}"
   ].join("\n");
 }
 
@@ -665,8 +625,6 @@ function layoutCounterpartAnswerPromptTemplate(): string {
     worldInfoBeforeBlockTemplate(),
     "",
     promptMemoryBlockTemplate(),
-    "",
-    storyContextBlockTemplate(),
     "",
     fullExchangeBlockTemplate(),
     "",
@@ -692,6 +650,8 @@ function layoutCounterpartAnswerPromptTemplate(): string {
     "",
     counterpartNoveltyRequestBlockTemplate(),
     "",
+    concreteNoveltyInstructionBlockTemplate(),
+    "",
     antiPatternBlockTemplate(),
     "",
     postHistoryInstructionBlockTemplate(),
@@ -700,6 +660,7 @@ function layoutCounterpartAnswerPromptTemplate(): string {
     "Write only the next textbox reply for {{npc.name}} and brief third-person scene narration.",
     "Respond directly to CURRENT_TURN.",
     "Follow TURN_REDIRECT as the single accepted novelty direction; do not combine it with other agent ideas.",
+    "Execute CONCRETE_NOVELTY_BEAT as one observable move, not as a vague mood, repeated texture, or visible prompt label.",
     "Use agent notes only for continuity, voice, and constraints; do not introduce unaccepted agent candidates.",
     "End with room for {{user.name}} to respond; do not resolve the whole relationship too quickly.",
     "Maximum 65 words.",
@@ -710,84 +671,47 @@ function layoutCounterpartAnswerPromptTemplate(): string {
 
 function layoutAutomaticPlayerAnswerPromptTemplate(): string {
   return [
-    rpIdentityInstructionTemplate(),
+    playerChoiceIdentityBlockTemplate(),
     "",
-    promptManagerLayoutBlockTemplate(),
+    playerChoiceRulesBlockTemplate(),
     "",
-    romanceModeBlockTemplate(),
-    "",
-    "PLAYER_TEXT_RULES:",
-    "- Output USER_REPLY only.",
-    "- Write as {{user.name}} choosing the next command, spoken line, or direct action.",
-    "- The current turn has not started yet; continue from LATEST_PREVIOUS_TURN.",
-    "- Continue from LATEST_PREVIOUS_TURN using FULL_STORY_CONTEXT as full accumulated story memory.",
-    "- Keep it short and playable; one line or one action + line is enough.",
-    "- Do not write first-person prose narration unless it is a bare spoken line or direct command.",
-    "- Do not describe {{npc.name}}, the room, lighting, sounds, facial expressions, body language, or atmosphere.",
-    "- Do not write the NPC reaction or resolve the whole romance.",
-    "- Do not repeat prior USER_REPLY, counterpart reply, or VISUAL_CUE text.",
-    "",
-    ...playerExampleBlockTemplate(),
+    ...playerChoiceExamplesBlockTemplate(),
     "",
     actorMetadataBlockTemplate(),
     "",
-    worldInfoBeforeBlockTemplate(),
+    playerChoiceContextBlockTemplate(),
     "",
-    promptMemoryBlockTemplate(),
-    "",
-    storyContextBlockTemplate(),
-    "",
-    fullExchangeBlockTemplate(),
-    "",
-    latestPreviousTurnBlockTemplate(),
-    "",
-    worldInfoAfterBlockTemplate(),
-    "",
-    recentOutputToAvoidBlockTemplate(),
-    "",
-    npcPersonnaPromptViewBlockTemplate(),
-    "",
-    romancePromptViewBlockTemplate(),
-    "",
-    romanticClichePromptViewBlockTemplate(),
-    "",
-    sexScenePromptViewBlockTemplate(),
-    "",
-    agentNotesBlockTemplate(),
-    "",
-    playerNoveltyRequestBlockTemplate(),
+    playerChoiceNoveltyBlockTemplate(),
     "",
     antiPatternBlockTemplate(),
     "",
-    postHistoryInstructionBlockTemplate(),
-    "",
-    "FINAL TASK:",
-    "Write only the next textbox reply for {{user.name}}.",
-    "Follow TURN_REDIRECT as the single accepted novelty direction; do not combine it with other agent ideas.",
-    "If TURN_REDIRECT says stabilize, answer with one safe, direct, low-risk choice instead of adding novelty.",
-    "Maximum 28 words.",
-    "",
-    "OUTPUT ONLY THAT TEXT BELOW:"
+    ...playerChoiceFinalTaskBlockTemplate()
   ].join("\n");
 }
 
+
 function noveltySceneTextFromInput(input: RpPromptRenderInput): string {
+  const promptContext = buildPromptContextView(input.node);
+
   return [
-    "FULL_STORY_CONTEXT:",
-    compactStoryContext(input.node.context || "(empty)"),
+    "STORY_SETUP:",
+    promptContext.storySetup,
+    "",
+    "RECENT_EXCHANGE_BEFORE_LATEST:",
+    promptContext.priorExchange,
     "",
     "LATEST_PREVIOUS_TURN:",
-    latestPreviousTurnFromContext(input.node.context || "") || "(empty)",
+    promptContext.latestPreviousTurn,
     "",
     "CURRENT_TURN:",
     input.node.userText?.trim() ? `USER: ${input.node.userText.trim()}` : "USER: (empty)",
     input.node.dialogue?.trim() ? `NPC_REPLY: ${input.node.dialogue.trim()}` : "",
     "",
     "PREVIOUS_VISUAL:",
-    input.node.visualDescription || lastVisualCueFromContext(input.node.context || "") || "(empty)",
+    promptContext.previousVisual,
     "",
     "RECENT_OUTPUT_TO_AVOID:",
-    recentOutputToAvoidText(input.node)
+    promptContext.recentOutputToAvoid
   ].filter((line) => line !== "").join("\n");
 }
 

@@ -99,7 +99,7 @@ describe("RP novel prompts", () => {
     expect(prompt).toContain("Do not use asterisks");
   });
 
-  it("anchors automatic user text to the latest previous turn", async () => {
+  it("builds automatic user text as a playable choice prompt", async () => {
     const prompt = await buildUserPrompt({
       node: {
         context: [
@@ -128,19 +128,30 @@ describe("RP novel prompts", () => {
       }
     });
 
+    expect(prompt).toContain("PLAYER_CHOICE_GENERATOR:");
+    expect(prompt).toContain("PLAYER_CHOICE_RULES:");
+    expect(prompt).toContain("PLAYER_CHOICE_CONTEXT:");
+    expect(prompt).toContain("PLAYER_CHOICE_NOVELTY:");
     expect(prompt).toContain("LATEST_PREVIOUS_TURN:");
-    expect(prompt).toContain("FULL_STORY_CONTEXT:");
     expect(prompt).toContain("INITIAL SETUP: The archive smells of old parchment.");
     expect(prompt).toContain("NPC: I am.");
     expect(prompt).toContain("VISUAL_CUE: Darkness stands beside an oak table.");
     expect(prompt).toContain("NPC: Give me your hand.");
     expect(prompt).toContain("Continue from LATEST_PREVIOUS_TURN");
-    expect(prompt).toContain("current turn has not started yet");
-    expect(prompt).toContain("full accumulated story memory");
-    expect(prompt).toContain("Do not write first-person prose");
+    expect(prompt).toContain("current player turn has not started yet");
+    expect(prompt).toContain("Do not write third-person scene narration");
+    expect(prompt).toContain("not romance prose and not an NPC response");
     expect(prompt).not.toContain("CURRENT_TURN:");
-    expect(prompt).not.toContain("NPC: I am.\n\nCURRENT_TURN");
+    expect(prompt).not.toContain("ROMANCE_STATE:");
+    expect(prompt).not.toContain("ROMANTIC_CLICHE_STATE:");
+    expect(prompt).not.toContain("SEX_SCENE_DETAIL_STATE:");
+    expect(prompt).not.toContain("NPC_PERSONNA_STATE:");
+    expect(prompt).not.toContain("AGENT_NOTES:");
+    expect(prompt).not.toContain("PROMPT_MANAGER_LAYOUT:");
+    expect(prompt).not.toContain("WORLD_INFO_AFTER_HISTORY:");
+    expect(prompt).not.toContain("PREVIOUS_VISUAL:");
   });
+
 
   it("stages current-turn context per generation step", async () => {
     const node = {
@@ -327,6 +338,8 @@ describe("RP novel prompts", () => {
         '*Darkness leans closer.* "This is no longer theory. It is'
       )
     ).toBe('Darkness leans closer. "This is no longer theory."');
+    expect(cleanDialogueOutput("Wait,.")).toBe("Wait.");
+    expect(cleanDialogueOutput('"Wait,"')).toBe('"Wait."');
     expect(
       cleanVisualDescriptionOutput(
         "VISUAL_CUE: 1girl with blonde hair sits at an archive table. Candles and open books surround her. Extra sentence."
@@ -342,5 +355,10 @@ describe("RP novel prompts", () => {
         '*The air crackles with tension as I lean closer, my voice dropping to a whisper.* "Are you certain you\'re ready for this, Kazuma? Once we begin, there\'s no'
       )
     ).toBe("Are you certain you're ready for this, Kazuma?");
+    expect(
+      cleanUserTextOutput(
+        '*I take a slow breath, hand hovering just above your sleeve.* "Wait," *I whisper again.*'
+      )
+    ).toBe("Wait.");
   });
 });

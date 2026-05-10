@@ -45,20 +45,35 @@ export function finalizeTextboxOutput(text: string, maxSentences: number): strin
     cleaned = sentences.slice(0, maxSentences).join(" ");
   }
 
-  cleaned = repairDanglingQuote(cleaned);
+  cleaned = normalizeGeneratedPunctuation(repairDanglingQuote(cleaned));
 
-  if (!/[.!?"']$/.test(cleaned)) cleaned += ".";
+  if (!/[.!?"'\u201d]$/u.test(cleaned)) cleaned += ".";
 
   return cleaned;
 }
 
+function normalizeGeneratedPunctuation(text: string): string {
+  return text
+    .replace(/\s+([,.;:!?])/g, "$1")
+    .replace(/([,;:])\s*([.!?])/g, "$2")
+    .replace(/([,;:])(\s*["'\u201d])?$/u, (_match, _punctuation, quote = "") => `.${quote}`)
+    .trim();
+}
+
 export function repairDanglingQuote(text: string): string {
   const quoteCount = (text.match(/"/g) ?? []).length;
+  const openCurlyQuoteCount = (text.match(/\u201c/g) ?? []).length;
+  const closeCurlyQuoteCount = (text.match(/\u201d/g) ?? []).length;
   let repaired = text.trim();
 
   if (quoteCount % 2 === 1) {
     if (!/[.!?]$/.test(repaired)) repaired += ".";
     repaired += "\"";
+  }
+
+  if (openCurlyQuoteCount > closeCurlyQuoteCount) {
+    if (!/[.!?]$/.test(repaired)) repaired += ".";
+    repaired += "\u201d";
   }
 
   return repaired;
