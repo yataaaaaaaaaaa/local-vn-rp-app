@@ -1,6 +1,6 @@
 import type { StoryNodeFields } from "@local-vn/story-domain";
 
-import { normalizeContextSnippet } from "../cleaning/text-utils";
+import { normalizeContextSnippet } from "../text/text-utils";
 
 export function compactStoryContext(context: string): string {
   const normalized = context

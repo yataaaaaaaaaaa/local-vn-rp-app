@@ -4,10 +4,7 @@ import {
   RP_DIALOGUE_STOP,
   buildAutomaticUserAnswerPromptWithActorNameCache,
   buildRpAnswerPromptWithActorNameCache,
-  buildVisualRepresentationPromptWithActorNameCache,
-  cleanDialogueOutput,
-  cleanUserTextOutput,
-  cleanVisualDescriptionOutput
+  buildVisualRepresentationPromptWithActorNameCache
 } from "../src/generation/rpNovelPrompts";
 
 async function runHiddenActorNameExtraction(): Promise<string> {
@@ -331,34 +328,4 @@ describe("RP novel prompts", () => {
     expect(prompt).toContain("Resolved visual tags: The tags that describe the image are: 1girl, candlelight");
   });
 
-  it("cleans labels after generation instead of relying on brittle hard stops", () => {
-    expect(cleanDialogueOutput("Assistant: I am ready.\nUser: future input")).toBe("I am ready.");
-    expect(
-      cleanDialogueOutput(
-        '*Darkness leans closer.* "This is no longer theory. It is'
-      )
-    ).toBe('Darkness leans closer. "This is no longer theory."');
-    expect(cleanDialogueOutput("Wait,.")).toBe("Wait.");
-    expect(cleanDialogueOutput('"Wait,"')).toBe('"Wait."');
-    expect(
-      cleanVisualDescriptionOutput(
-        "VISUAL_CUE: 1girl with blonde hair sits at an archive table. Candles and open books surround her. Extra sentence."
-      )
-    ).toBe(
-      "1girl with blonde hair sits at an archive table. Candles and open books surround her."
-    );
-  });
-
-  it("cleans automatic user text away from narration and dangling continuations", () => {
-    expect(
-      cleanUserTextOutput(
-        '*The air crackles with tension as I lean closer, my voice dropping to a whisper.* "Are you certain you\'re ready for this, Kazuma? Once we begin, there\'s no'
-      )
-    ).toBe("Are you certain you're ready for this, Kazuma?");
-    expect(
-      cleanUserTextOutput(
-        '*I take a slow breath, hand hovering just above your sleeve.* "Wait," *I whisper again.*'
-      )
-    ).toBe("Wait.");
-  });
 });

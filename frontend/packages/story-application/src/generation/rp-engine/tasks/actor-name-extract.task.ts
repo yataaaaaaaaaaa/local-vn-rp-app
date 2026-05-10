@@ -1,6 +1,6 @@
 import type { StoryNodeFields } from "@local-vn/story-domain";
 
-import { stripProtocolNoise } from "../cleaning/protocol-noise";
+import { stripProtocolNoise } from "../protocol/protocol-noise";
 import { renderPromptTemplate } from "../prompt/mustache-renderer";
 import { normalizeActorNames } from "../state/actor-state";
 import { storySetupFromContext } from "../state/story-context";

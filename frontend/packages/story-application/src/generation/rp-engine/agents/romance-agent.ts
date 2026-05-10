@@ -1,6 +1,6 @@
 import type { StoryNodeFields } from "@local-vn/story-domain";
 
-import { normalizeContextSnippet, splitSentences } from "../cleaning/text-utils";
+import { normalizeContextSnippet, splitSentences } from "../text/text-utils";
 import { selectRomanceBeat, type CandidateScoringContext } from "../novelty/candidate-scoring";
 import { PLAYER_RESPONSE_BEATS } from "../novelty/player-beat-deck";
 import { latestPreviousTurnFromContext, previousTurnCount } from "../state/story-context";

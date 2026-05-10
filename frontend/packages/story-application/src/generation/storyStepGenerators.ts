@@ -16,10 +16,7 @@ import {
   RP_NOVEL_STOP,
   buildAutomaticUserAnswerPromptWithActorNameCache,
   buildRpAnswerPromptWithActorNameCache,
-  buildVisualRepresentationPromptWithActorNameCache,
-  cleanDialogueOutput,
-  cleanUserTextOutput,
-  cleanVisualDescriptionOutput
+  buildVisualRepresentationPromptWithActorNameCache
 } from "./rpNovelPrompts";
 import { rpNovelLlmRequestConfig } from "./llmRequestConfig";
 import {
@@ -148,7 +145,7 @@ export async function generateUserTextStep(input: {
     ),
     { signal: input.context.abortSignal }
   );
-  const userText = cleanUserTextOutput(result.text);
+  const userText = result.text;
 
   await recordRpLlmTrace(input.context, "userText", fullPrompt, result.text, userText);
 
@@ -185,7 +182,7 @@ export async function generateDialogueStep(input: {
     ),
     { signal: input.context.abortSignal }
   );
-  const dialogue = cleanDialogueOutput(result.text);
+  const dialogue = result.text;
 
   await recordRpLlmTrace(input.context, "dialogue", fullPrompt, result.text, dialogue);
 
@@ -232,7 +229,7 @@ export async function generateVisualDescriptionStep(input: {
     { signal: input.context.abortSignal }
   );
 
-  const text = cleanVisualDescriptionOutput(result.text);
+  const text = result.text;
 
   await recordRpLlmTrace(
     input.context,

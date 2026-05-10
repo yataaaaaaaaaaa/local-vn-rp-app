@@ -37,7 +37,7 @@ describe("story step generators", () => {
       "dialogue",
       "visualDescription"
     ]);
-    expect(trace.mock.calls[0][0][0].answer).toBe("Generated answer.");
+    expect(trace.mock.calls[0][0][0].answer).toBe("Assistant: Generated answer.\nUser: Future input");
     expect(resolverTrace).not.toHaveBeenCalled();
   });
 
@@ -92,7 +92,7 @@ function createContext(
   return {
     backend: {
       generateLlm: vi.fn(async () => ({
-        text: "Generated answer.",
+        text: "Assistant: Generated answer.\nUser: Future input",
         finish_reason: "stop",
         seed: 1
       })),

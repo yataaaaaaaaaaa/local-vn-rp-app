@@ -5,7 +5,7 @@ import {
   latestPreviousTurnFromContext,
   storySetupFromContext
 } from "../state/story-context";
-import { normalizeContextSnippet } from "../cleaning/text-utils";
+import { normalizeContextSnippet } from "../text/text-utils";
 
 const MAX_PRIOR_EXCHANGE_TURNS = 4;
 

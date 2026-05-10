@@ -1,4 +1,4 @@
-import { normalizeContextSnippet } from "../cleaning/text-utils";
+import { normalizeContextSnippet } from "../text/text-utils";
 
 export function extractForbiddenFragments(text: string): string[] {
   const sentences = text

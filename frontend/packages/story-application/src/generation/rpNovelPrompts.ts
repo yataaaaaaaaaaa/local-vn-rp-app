@@ -1,6 +1,3 @@
-import { cleanDialogueOutput } from "./rp-engine/cleaning/clean-dialogue";
-import { cleanUserTextOutput } from "./rp-engine/cleaning/clean-user-text";
-import { cleanVisualDescriptionOutput } from "./rp-engine/cleaning/clean-visual";
 import { renderPromptTemplate } from "./rp-engine/prompt/mustache-renderer";
 import { buildPromptContextView } from "./rp-engine/prompt/prompt-context-view";
 import { buildConcreteNoveltyInstruction } from "./rp-engine/prompt/concrete-novelty-instructions";
@@ -51,7 +48,6 @@ import type {
 } from "./rp-engine/types";
 
 export { RP_DIALOGUE_STOP, RP_NOVEL_STOP };
-export { cleanDialogueOutput, cleanUserTextOutput, cleanVisualDescriptionOutput };
 export type {
   ActorNameExtractionRunner,
   AdvancementCard,
