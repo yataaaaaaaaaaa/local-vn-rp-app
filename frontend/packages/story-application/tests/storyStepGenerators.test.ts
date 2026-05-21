@@ -1,4 +1,5 @@
 import { createDefaultBackendRuntimeConfig } from "@local-vn/config";
+import type { LlmGenerateRequest } from "@local-vn/shared-types";
 import type { StoryNodeFields } from "@local-vn/story-domain";
 import { describe, expect, it, vi } from "vitest";
 
@@ -39,6 +40,35 @@ describe("story step generators", () => {
     ]);
     expect(trace.mock.calls[0][0][0].answer).toBe("Assistant: Generated answer.\nUser: Future input");
     expect(resolverTrace).not.toHaveBeenCalled();
+  });
+
+  it("uses global max tokens for user, NPC, and visual cue answer calls", async () => {
+    const context = createContext(vi.fn(), vi.fn());
+    context.config.llm.max_tokens = 123;
+
+    await generateUserTextStep({ document: baseNode(), context });
+    await generateDialogueStep({
+      document: { ...baseNode(), userText: "Take my hand." },
+      context
+    });
+    await generateVisualDescriptionStep({
+      document: {
+        ...baseNode(),
+        userText: "Take my hand.",
+        dialogue: "Only if you keep up."
+      },
+      context
+    });
+
+    const mainAnswerRequests = vi.mocked(context.backend.generateLlm).mock.calls
+      .map(([request]) => request as LlmGenerateRequest)
+      .filter((request) => !request.debug_no_log);
+
+    expect(mainAnswerRequests.map((request) => request.max_tokens)).toEqual([
+      123,
+      123,
+      123
+    ]);
   });
 
   it("builds the prompt from resolver tags, selected tags, DanBot tags, and global defaults", () => {

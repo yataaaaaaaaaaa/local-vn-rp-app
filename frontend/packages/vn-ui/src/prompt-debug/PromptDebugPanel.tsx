@@ -215,7 +215,6 @@ export function PromptDebugPanel() {
           prompt,
           llmOverridesForPromptKind(
             promptKind,
-            config.llm.max_tokens,
             config.llm.temperature,
           ),
         ),
@@ -486,12 +485,10 @@ function metadataFromPromptBuildResult(result: {
 
 function llmOverridesForPromptKind(
   kind: DebugPromptKind,
-  configuredMaxTokens: number,
   configuredTemperature: number,
 ): Partial<LlmGenerateRequest> {
   if (kind === "visualDescription") {
     return {
-      max_tokens: Math.min(configuredMaxTokens, 64),
       temperature: Math.min(configuredTemperature, 0.35),
       stop: RP_NOVEL_STOP,
       debug_no_log: true,
@@ -500,14 +497,12 @@ function llmOverridesForPromptKind(
 
   if (kind === "userText") {
     return {
-      max_tokens: Math.min(configuredMaxTokens, 40),
       stop: RP_DIALOGUE_STOP,
       debug_no_log: true,
     };
   }
 
   return {
-    max_tokens: Math.min(configuredMaxTokens, 96),
     stop: RP_DIALOGUE_STOP,
     debug_no_log: true,
   };

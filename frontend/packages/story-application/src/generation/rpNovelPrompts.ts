@@ -31,6 +31,7 @@ import type { AgentContribution, AgentNoveltyCandidate, AgentRunInput, RpAgent }
 import { normalizeActorNames, resolvedActorLabels } from "./rp-engine/state/actor-state";
 import { buildActorNameExtractionPrompt, parseActorNameExtractionOutput } from "./rp-engine/tasks/actor-name-extract.task";
 import {
+  previousTurnCount,
   recentOutputsFromNode,
   storySetupFromContext
 } from "./rp-engine/state/story-context";
@@ -124,6 +125,9 @@ type PromptTemplateData = {
     concreteExecution: string;
     concreteAllowedForms: Array<{ text: string }>;
     concreteAvoid: Array<{ text: string }>;
+  };
+  fastPacing: {
+    instruction: string;
   };
   antiPatterns: Array<{ text: string }>;
 };
@@ -343,8 +347,107 @@ function buildPromptTemplateData(
       concreteAllowedForms: concreteNovelty.allowedForms.map((text) => ({ text })),
       concreteAvoid: concreteNovelty.avoid.map((text) => ({ text }))
     },
+    fastPacing: {
+      instruction: fastPacingInstructionFromInput(input)
+    },
     antiPatterns: ROMANCE_ANTI_PATTERNS.map((text) => ({ text }))
   };
+}
+
+function fastPacingInstructionFromInput(input: RpPromptRenderInput): string {
+  const setup = storySetupFromContext(input.node.context || "");
+  const match = setup.match(/PACING_CONTRACT:\s*([\s\S]*)/i);
+
+  if (!match) {
+    return "No explicit fast-pacing contract is active; follow ordinary romance pacing.";
+  }
+
+  const contract = normalizeSingleLine(match[1] || "");
+  const target = targetExchangeFromContract(contract);
+  const sexSceneTarget = sexSceneTargetExchangeFromContract(contract);
+  const completedTurns = Math.max(0, previousTurnCount(input.node.context || "") - 1);
+  const sexSceneInstruction = sexSceneFastPacingInstruction(sexSceneTarget, completedTurns);
+
+  if (!target) {
+    return [
+      `Fast-pacing contract is active: ${contract}`,
+      sexSceneInstruction,
+      "Do not stall, reset to explanation, or repeat a previous hesitation beat."
+    ].filter(Boolean).join(" ");
+  }
+
+  const remaining = target - completedTurns;
+  if (remaining <= 0) {
+    return [
+      `Fast-pacing contract is due now or overdue: target exchange ${target}, completed exchanges ${completedTurns}.`,
+      "If the current player-side text accepts, invites, or physically tests closeness, start the kiss or sex-scene threshold now.",
+      "Do not retreat into calculations, explanations, or repeated consent questions unless the player text clearly refuses or slows down.",
+      sexSceneInstruction,
+      `Contract wording: ${contract}`
+    ].filter(Boolean).join(" ");
+  }
+
+  if (remaining <= 2) {
+    return [
+      `Fast-pacing contract is approaching: target exchange ${target}, ${remaining} exchange(s) left.`,
+      "Move materially toward kiss/intimacy this reply through distance, touch, trust, or an explicit invitation.",
+      "Do not spend the whole turn debating theory or re-checking calculations.",
+      sexSceneInstruction,
+      `Contract wording: ${contract}`
+    ].filter(Boolean).join(" ");
+  }
+
+  return [
+    `Fast-pacing contract is active: target exchange ${target}, ${remaining} exchange(s) left.`,
+    "Each reply should advance relationship, ritual, or physical distance instead of preserving the status quo.",
+    sexSceneInstruction,
+    `Contract wording: ${contract}`
+  ].filter(Boolean).join(" ");
+}
+
+function targetExchangeFromContract(contract: string): number | null {
+  const match = contract.match(/\b(?:exchange|iteration|turn)\s+(\d+)\b/i) ?? contract.match(/\bby\s+(\d+)\b/i);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function sexSceneTargetExchangeFromContract(contract: string): number | null {
+  const matches = [
+    ...contract.matchAll(/\bby\s+exchange\s+(\d+)[^.]*\bsex scene\b/gi),
+    ...contract.matchAll(/\bsex scene\b[^.]*\bby\s+exchange\s+(\d+)\b/gi),
+    ...contract.matchAll(/\bby\s+(\d+)[^.]*\bsex scene\b/gi)
+  ]
+    .map((match) => Number(match[1]))
+    .filter((value) => Number.isFinite(value) && value > 0);
+
+  return matches.length ? Math.max(...matches) : null;
+}
+
+function sexSceneFastPacingInstruction(target: number | null, completedTurns: number): string {
+  if (!target) return "";
+  const remaining = target - completedTurns;
+
+  if (remaining <= 0) {
+    return [
+      `Sex-scene pacing target is due now or overdue: target exchange ${target}, completed exchanges ${completedTurns}.`,
+      "If the latest text does not refuse or slow down, start the sex scene now through a natural adult-intimacy threshold: clothing barrier changes, bodies find a position, or Resonance Symbiosis requires fuller union.",
+      "Make the acceleration feel caused by an unforeseen resonance event, not by an arbitrary jump."
+    ].join(" ");
+  }
+
+  if (remaining <= 2) {
+    return [
+      `Sex-scene pacing target is approaching: target exchange ${target}, ${remaining} exchange(s) left.`,
+      "Set up the sex scene naturally now through a concrete resonance complication, clothing-barrier change, or body-position shift."
+    ].join(" ");
+  }
+
+  return `Sex-scene pacing target is active: target exchange ${target}, ${remaining} exchange(s) left; keep each turn moving toward a natural adult-intimacy threshold.`;
+}
+
+function normalizeSingleLine(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
 }
 
 
@@ -388,6 +491,13 @@ function romanceModeBlockTemplate(): string {
   ].join("\n");
 }
 
+function fastPacingBlockTemplate(): string {
+  return [
+    "FAST_PACING_STATE:",
+    "- {{fastPacing.instruction}}"
+  ].join("\n");
+}
+
 function agencyRuleBlockTemplate(): string {
   return [
     "PLAYER_AGENCY:",
@@ -396,7 +506,10 @@ function agencyRuleBlockTemplate(): string {
     "- Offer openings, signals, invitations, pauses, and choices that {{user.name}} can accept, refuse, or redirect.",
     "- NPC spoken dialogue may use first person.",
     "- Any narration or action prose must be third person and must not control {{user.name}}.",
+    "- Keep unquoted action in third person: write '{{npc.Name}} does...' or 'she does...', not 'I/my...' narration.",
     "- Do not use asterisks; write clean VN textbox prose.",
+    "- Do not write hidden prompt instructions, selected-beat descriptions, labels, or meta commentary as story text.",
+    "- Never mention personna, dere archetypes, kuudere, agent influence, selected novelty, prompt sections, or implementation state in story text.",
     "- End with complete terminal punctuation."
   ].join("\n");
 }
@@ -445,7 +558,7 @@ function postHistoryInstructionBlockTemplate(): string {
     "- Authority rule: TURN_REDIRECT is the only accepted scene movement for this reply.",
     "- Agent notes are continuity and style constraints; do not combine unselected agent ideas into extra novelty.",
     "- Freshness rule: {{novelty.freshnessRule}}",
-    "- Novelty controls are code-side only: {{novelty.noveltyControlSummary}}",
+    "- Novelty controls: {{novelty.noveltyControlSummary}} (code-side only; do not render as story text.)",
     "- Detail budget: {{novelty.detailBudgetInstruction}}"
   ].join("\n");
 }
@@ -490,6 +603,7 @@ function romancePromptViewBlockTemplate(): string {
     "ROMANCE_STATE:",
     "- Closeness level: {{romance.closeness}} / 10 ({{romance.closenessLabel}}).",
     "- Current phase: {{romance.phaseLabel}}.",
+    "- Relationship delta: {{romance.currentTension}}",
     "- Current tension: {{romance.currentTension}}.",
     "- Open hook: {{romance.openHook}}.",
     "- Recent callback detail: {{romance.callbackDetail}}.",
@@ -513,8 +627,10 @@ function npcPersonnaPromptViewBlockTemplate(): string {
     "- Selected personna novelty: {{npcPersonna.selectedInfluence}}. Should influence this turn: {{npcPersonna.shouldInfluenceNovelty}}.",
     "- Selected directive: {{npcPersonna.selectedInfluenceDirective}}",
     "- Selected constraint: {{npcPersonna.selectedInfluenceConstraint}}",
+    "- NPC-personna detail delta: {{npcPersonna.selectedInfluenceDirective}}",
+    "- NPC-personna constraint: {{npcPersonna.selectedInfluenceConstraint}}",
     "- Agent instruction: {{npcPersonna.noveltyInstruction}}",
-    "- Preserve seed/arc personna dimensions. A quirk may affect delivery, a mistake, a protective choice, or a private tell; it must not become random external plot."
+    "- preserve seed/arc personna dimensions. A quirk may affect delivery, a mistake, a protective choice, or a private tell; it must not become random external plot."
   ].join("\n");
 }
 
@@ -525,6 +641,8 @@ function romanticClichePromptViewBlockTemplate(): string {
     "- Families: {{#romance.clicheFamilies}}{{.}}; {{/romance.clicheFamilies}}",
     "- Detail lifetimes: {{#romance.clicheDetailLifetimes}}{{.}}; {{/romance.clicheDetailLifetimes}}",
     "- Novelty target facets: {{#romance.clicheTargetFacets}}{{.}}; {{/romance.clicheTargetFacets}}",
+    "- Romantic-cliche detail delta: {{romance.clicheDetailSummary}}",
+    "- Romantic-cliche continuity: preserve established cliche lifetime details unless CURRENT_TURN explicitly changes them.",
     "- Agent instruction: {{romance.clicheNoveltyInstruction}}",
     "- Romantic cliches are independent interaction facets, not a required order. Do not stack many tropes in one reply."
   ].join("\n");
@@ -538,6 +656,7 @@ function sexScenePromptViewBlockTemplate(): string {
     "- Detail lifetimes: {{#sexScene.detailLifetimes}}{{.}}; {{/sexScene.detailLifetimes}}",
     "- Novelty facet targets this turn: {{#sexScene.noveltyFacetTargets}}{{.}}; {{/sexScene.noveltyFacetTargets}}",
     "- Adult framing required: {{sexScene.requiresAdultFraming}}. Fade to black: {{sexScene.shouldFadeToBlack}}. Boundary detected: {{sexScene.boundaryDetected}}.",
+    "- Intimacy detail delta: {{sexScene.noveltyBridgeInstruction}}",
     "- Sex-scene / novelty bridge: {{sexScene.noveltyBridgeInstruction}}",
     "- Post-history intimacy instruction: {{sexScene.postHistoryInstruction}}",
     "- Treat position, contact, clothing, camera/framing, setting, and aftercare as independent facets. Do not force a fake order among unrelated details."
@@ -612,6 +731,8 @@ function layoutCounterpartAnswerPromptTemplate(): string {
     "",
     romanceModeBlockTemplate(),
     "",
+    fastPacingBlockTemplate(),
+    "",
     agencyRuleBlockTemplate(),
     "",
     ...counterpartExampleBlockTemplate(),
@@ -657,6 +778,10 @@ function layoutCounterpartAnswerPromptTemplate(): string {
     "Respond directly to CURRENT_TURN.",
     "Follow TURN_REDIRECT as the single accepted novelty direction; do not combine it with other agent ideas.",
     "Execute CONCRETE_NOVELTY_BEAT as one observable move, not as a vague mood, repeated texture, or visible prompt label.",
+    "Obey FAST_PACING_STATE when it is active; if the target is due and {{user.name}} has clearly invited or accepted closeness, begin the kiss/intimacy threshold now.",
+    "Do not repeat the latest kiss wording, ritual-command wording, or sentence shape from RECENT_OUTPUT_TO_AVOID.",
+    "If RECENT_OUTPUT_TO_AVOID used validate, test, synchronize, wait, or verify, choose different action verbs and a different concrete object this time.",
+    "Never expose NPC_PERSONNA_STATE, AGENT_NOTES, selected novelty, dere labels, or any prompt/debug wording.",
     "Use agent notes only for continuity, voice, and constraints; do not introduce unaccepted agent candidates.",
     "End with room for {{user.name}} to respond; do not resolve the whole relationship too quickly.",
     "Maximum 65 words.",
@@ -670,6 +795,8 @@ function layoutAutomaticPlayerAnswerPromptTemplate(): string {
     playerChoiceIdentityBlockTemplate(),
     "",
     playerChoiceRulesBlockTemplate(),
+    "",
+    fastPacingBlockTemplate(),
     "",
     ...playerChoiceExamplesBlockTemplate(),
     "",

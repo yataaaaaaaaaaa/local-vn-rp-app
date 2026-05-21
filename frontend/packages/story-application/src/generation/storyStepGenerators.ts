@@ -139,7 +139,6 @@ export async function generateUserTextStep(input: {
       input.context.config,
       fullPrompt,
       {
-        max_tokens: Math.min(input.context.config.llm.max_tokens, 40),
         stop: RP_DIALOGUE_STOP
       }
     ),
@@ -176,7 +175,6 @@ export async function generateDialogueStep(input: {
       input.context.config,
       fullPrompt,
       {
-        max_tokens: Math.min(input.context.config.llm.max_tokens, 96),
         stop: RP_DIALOGUE_STOP
       }
     ),
@@ -221,7 +219,6 @@ export async function generateVisualDescriptionStep(input: {
       input.context.config,
       fullPrompt,
       {
-        max_tokens: Math.min(input.context.config.llm.max_tokens, 64),
         temperature: Math.min(input.context.config.llm.temperature, 0.35),
         stop: RP_NOVEL_STOP
       }

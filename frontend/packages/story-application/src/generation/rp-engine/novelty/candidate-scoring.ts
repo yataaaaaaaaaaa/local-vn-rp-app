@@ -70,7 +70,7 @@ export function noveltyControlSummary(controls?: Partial<NoveltyRuntimeConfig> |
 
 export function detailBudgetInstructionForControls(controls?: Partial<NoveltyRuntimeConfig> | null): string {
   const budget = normalizeNoveltyControls(controls).detail_budget;
-  if (budget <= 0.25) return "Novelty detail budget: stabilize; avoid adding a new visible or emotional detail unless required by the latest user input.";
+  if (budget <= 0.25) return "Novelty detail budget: stabilize the scene; avoid adding a new visible or emotional detail unless required by the latest user input.";
   if (budget <= 0.75) return "Novelty detail budget: at most one tiny texture detail while following TURN_REDIRECT.";
   if (budget <= 1.25) return "Novelty detail budget: one coherent redirect detail; do not stack additional agent ideas.";
   if (budget <= 1.75) return "Novelty detail budget: one redirect detail plus one compatible support detail if it already follows from the scene.";

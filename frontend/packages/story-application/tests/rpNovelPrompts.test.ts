@@ -328,4 +328,37 @@ describe("RP novel prompts", () => {
     expect(prompt).toContain("Resolved visual tags: The tags that describe the image are: 1girl, candlelight");
   });
 
+  it("surfaces kiss and sex-scene fast-pacing targets from pacing contracts", async () => {
+    const prompt = await buildNpcPrompt({
+      node: {
+        context: [
+          "INITIAL SETUP: Restricted Archive.",
+          "PACING_CONTRACT:",
+          "By exchange 5, a kiss or sex scene must have started.",
+          "By exchange 7, the sex scene must have started.",
+          "PREVIOUS_TURN:",
+          "USER: I trust you.",
+          "NPC: Then come closer.",
+          "PREVIOUS_TURN:",
+          "USER: I choose this.",
+          "NPC: The resonance answers."
+        ].join("\n"),
+        userText: "No more waiting.",
+        dialogue: "",
+        visualDescription: "They stand beside an oak table.",
+        resolverText: "",
+        selectedTags: "",
+        danbotTags: "",
+        positivePrompt: "",
+        negativePrompt: "",
+        imageRef: ""
+      }
+    });
+
+    expect(prompt).toContain("FAST_PACING_STATE:");
+    expect(prompt).toContain("target exchange 5");
+    expect(prompt).toContain("Sex-scene pacing target");
+    expect(prompt).toContain("target exchange 7");
+  });
+
 });
